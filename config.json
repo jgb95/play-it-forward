@@ -1,0 +1,11 @@
+{
+ "title":"Play It Forward","event":"bitcoin++ Berlin · payments edition","publicUrl":"http://localhost:5173","methods":["lightning","bitcoin","ark"],
+ "chapters":[
+  {"scene":"station","name":"Berlin Hauptbahnhof","subtitle":"Every great journey starts with a little kindness.","threshold":0,"reward":null},
+  {"scene":"spree","name":"Along the Spree","subtitle":"A river of light. A little further, together.","threshold":50000,"reward":"hat"},
+  {"scene":"alexanderplatz","name":"Alexanderplatz","subtitle":"Big city. Small payments. Endless possibilities.","threshold":150000,"reward":"sunglasses"},
+  {"scene":"gallery","name":"East Side Gallery","subtitle":"Leave the world a little more colourful.","threshold":350000,"reward":"shirt"},
+  {"scene":"gate","name":"Brandenburg Gate","subtitle":"Some doors open when we come together.","threshold":700000,"reward":"bag"},
+  {"scene":"vault","name":"The Community Vault","subtitle":"The treasure was always what we built together.","threshold":1250000,"reward":"key"}
+ ],"goal":2000000
+}

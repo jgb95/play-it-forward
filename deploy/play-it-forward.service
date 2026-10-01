@@ -1,0 +1,23 @@
+[Unit]
+Description=Play It Forward donation adventure
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=playforward
+Group=playforward
+WorkingDirectory=/opt/play-it-forward
+EnvironmentFile=/etc/play-it-forward.env
+ExecStart=/usr/bin/node --import tsx server/index.ts
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/play-it-forward
+
+[Install]
+WantedBy=multi-user.target
