@@ -90,3 +90,11 @@ For manual UI checks, open the screen and mobile page together; send a 1,000-sat
 This is a hackathon prototype, with a working simulated game and a Bark receive adapter. Funded signet settlement, a small real-sats smoke test, VPS deployment, and the physical phone QR scan are operator checks before collecting public money. A one-confirmation Bitcoin credit is treated as durable; automatic reorg reversals are not implemented. No spending, refund, payout, Cashu, voting, or acceleration UI is included.
 
 MIT licensed original code and procedural art. Bundled DM Sans and IBM Plex Mono fonts retain their upstream SIL Open Font License. bitcoin++ branding remains the event's branding.
+
+### Presenting the adventure
+
+Open `/` for the overview and select **Present adventure** to open `/screen`. The presentation fills the viewport; its **Fullscreen** button enters browser fullscreen (Escape exits). Operator controls fade after inactivity and return on pointer movement or keyboard focus. The exact pool total, QR code, fund mode, and connection status stay visible.
+
+Dark mode is the default. The header theme button switches every page between light and dark and remembers the choice in this browser. Sound remains off by default. Motion respects the system reduced-motion preference and can also be switched off in the presentation footer.
+
+The courier walks from left to right according to **sats within the current chapter**, then the camera slides into the next scene. Quiet periods use a planted-foot idle pose. Multi-chapter gifts use a montage capped at four seconds; totals and rewards update immediately. Loading or reconnecting restores the current position without replaying old travel. Beyond the goal, the courier stays beside the open vault while treasure continues to grow.

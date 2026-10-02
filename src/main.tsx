@@ -8,7 +8,6 @@ import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import QRCode from "qrcode";
 import {
-  progression,
   sats,
   type Config,
   type State,
@@ -17,6 +16,7 @@ import {
   type Method,
 } from "../shared/model";
 import { background, render, type Trail } from "./world";
+import { JourneyMotion, courierX } from "./motion";
 import "./style.css";
 async function api<T>(path: string, data?: unknown): Promise<T> {
   const r = await fetch("/api" + path, {
@@ -59,7 +59,8 @@ function useJourney() {
     ),
     [connected, setConnected] = useState(false),
     [error, setError] = useState(""),
-    [events, setEvents] = useState<Celebration[]>([]);
+    [events, setEvents] = useState<Celebration[]>([]),
+    [restore, setRestore] = useState(0);
   useEffect(() => {
     let source: EventSource | undefined,
       active = true;
@@ -72,16 +73,19 @@ function useJourney() {
           source = new EventSource("/api/events?after=" + d.state.eventId);
           source.onopen = () => setConnected(true);
           source.onerror = () => setConnected(false);
-          source.addEventListener("snapshot", (e) =>
+          source.addEventListener("snapshot", (e) => {
             setData((p) =>
               p ? { ...p, state: JSON.parse((e as MessageEvent).data) } : p,
-            ),
-          );
+            );
+            setEvents([]);
+            setRestore((v) => v + 1);
+          });
           source.addEventListener("reset", (e) => {
             setData((p) =>
               p ? { ...p, state: JSON.parse((e as MessageEvent).data) } : p,
             );
             setEvents([]);
+            setRestore((v) => v + 1);
           });
           source.addEventListener("donation", (e) => {
             const v = JSON.parse((e as MessageEvent).data);
@@ -103,7 +107,47 @@ function useJourney() {
       source?.close();
     };
   }, []);
-  return { data, connected, error, events };
+  return { data, connected, error, events, restore };
+}
+function ThemeToggle() {
+  const [theme, setTheme] = useState(
+    document.documentElement.dataset.theme || "dark",
+  );
+  useEffect(() => {
+    const sync = () =>
+      setTheme(document.documentElement.dataset.theme || "dark");
+    const storage = (event: StorageEvent) => {
+      if (event.key === "pif-theme") {
+        document.documentElement.dataset.theme =
+          event.newValue === "light" ? "light" : "dark";
+        sync();
+      }
+    };
+    window.addEventListener("storage", storage);
+    window.addEventListener("pif-theme", sync);
+    return () => {
+      window.removeEventListener("storage", storage);
+      window.removeEventListener("pif-theme", sync);
+    };
+  }, []);
+  return (
+    <button
+      className="theme-toggle"
+      aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+      onClick={() => {
+        const next = theme === "dark" ? "light" : "dark";
+        document.documentElement.dataset.theme = next;
+        try {
+          localStorage.setItem("pif-theme", next);
+        } catch {
+          /* Storage can be unavailable. */
+        }
+        window.dispatchEvent(new Event("pif-theme"));
+      }}
+    >
+      {theme === "dark" ? "☀ Light" : "☾ Dark"}
+    </button>
+  );
 }
 function Header({
   mode,
@@ -116,7 +160,7 @@ function Header({
 }) {
   return (
     <header className="header">
-      <a className="wordmark" href="/screen">
+      <a className="wordmark" href="/">
         <span className="brand-mark">↗</span>{" "}
         {config?.title === "Play It Forward" || !config
           ? "play it forward"
@@ -136,6 +180,7 @@ function Header({
               ? "SIGNET · TEST SATS"
               : "LIVE COMMUNITY POOL"}
       </span>
+      <ThemeToggle />
     </header>
   );
 }
@@ -144,39 +189,83 @@ function World({
   events,
   reduced,
   config,
+  restore,
+  onChapter,
 }: {
   state: State;
   events: Celebration[];
   reduced: boolean;
   config: Config;
+  restore: number;
+  onChapter: (chapter: number) => void;
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
-  const latest = useRef({ state, events, reduced, config });
-  latest.current = { state, events, reduced, config };
+  const latest = useRef({ state, events, reduced, config, restore, onChapter });
+  latest.current = { state, events, reduced, config, restore, onChapter };
   useEffect(() => {
     const c = ref.current!.getContext("2d")!;
-    let bg: HTMLCanvasElement,
-      key = "",
-      raf = 0;
-    let seen = state.eventId;
-    let trails: Trail[] = [];
-    let tick = 0;
-    function frame(ms: number) {
-      const now = ms / 1000;
-      const { state: s, events: e, reduced: r, config: cfg } = latest.current;
-      const sceneIndex = [
+    let raf = 0,
+      seen = state.eventId,
+      restored = restore;
+    let trails: Trail[] = [],
+      tick = 0,
+      reportedChapter = -1;
+    const motion = new JourneyMotion(state);
+    const backgrounds = new Map<string, HTMLCanvasElement>();
+    function sceneState(chapter: number, s: State, cfg: Config): State {
+      const index = [
         "station",
         "spree",
         "alexanderplatz",
         "gallery",
         "gate",
         "vault",
-      ].indexOf(cfg.chapters[s.chapter].scene);
-      const k = `${sceneIndex}/${s.vaultOpen}/${s.treasureTier}`;
-      if (key !== k) {
-        bg = background(sceneIndex, s.vaultOpen, s.treasureTier);
-        key = k;
+      ].indexOf(cfg.chapters[chapter].scene);
+      return {
+        ...s,
+        chapter: index,
+        vaultOpen: chapter === s.chapter && s.vaultOpen,
+      };
+    }
+    function sceneBackground(s: State) {
+      const key = `${s.chapter}/${s.vaultOpen}/${s.treasureTier}`;
+      if (!backgrounds.has(key))
+        backgrounds.set(
+          key,
+          background(s.chapter, s.vaultOpen, s.treasureTier),
+        );
+      return backgrounds.get(key)!;
+    }
+    function frame(ms: number) {
+      const now = ms / 1000;
+      const {
+        state: s,
+        events: e,
+        reduced: r,
+        config: cfg,
+        restore: epoch,
+      } = latest.current;
+      const snap = epoch !== restored || s.eventId < seen;
+      if (snap) {
+        trails = [];
+        seen = s.eventId;
+        restored = epoch;
       }
+      motion.update(s, now, r || snap);
+      const pose = motion.sample(now);
+      if (pose.chapter !== reportedChapter) {
+        reportedChapter = pose.chapter;
+        latest.current.onChapter(pose.chapter);
+      }
+      const outgoing = sceneState(pose.chapter, s, cfg);
+      const incoming =
+        pose.nextChapter === undefined
+          ? undefined
+          : sceneState(pose.nextChapter, s, cfg);
+      const x = incoming
+        ? courierX(outgoing.chapter, 1) * (1 - pose.slide) +
+          courierX(incoming.chapter, 0) * pose.slide
+        : courierX(outgoing.chapter, pose.progress);
       if (s.eventId < seen) {
         seen = s.eventId;
         trails = [];
@@ -187,7 +276,21 @@ function World({
           seen = event.id;
         }
       trails = trails.filter((x) => now - x.born < 1.8);
-      render(c, bg, { ...s, chapter: sceneIndex }, now, trails, r);
+      render(c, sceneBackground(outgoing), outgoing, now, trails, r, {
+        x,
+        walking: pose.walking,
+        slide: pose.slide,
+        incoming: incoming
+          ? { bg: sceneBackground(incoming), state: incoming }
+          : undefined,
+      });
+      // Useful to inspect the amount-based position without exposing payment details.
+      ref.current!.dataset.chapter = String(pose.chapter);
+      ref.current!.dataset.progress = String(pose.progress);
+      ref.current!.dataset.courierX = String(x);
+      ref.current!.dataset.travel = String(pose.transitioning);
+      ref.current!.dataset.acknowledged = String(tick);
+      ref.current!.dataset.activeTrails = String(trails.length);
       raf = requestAnimationFrame(frame);
     }
     raf = requestAnimationFrame(frame);
@@ -203,8 +306,45 @@ function World({
     />
   );
 }
-function Screen() {
-  const { data, connected, error, events } = useJourney();
+function Screen({ presenting = false }: { presenting?: boolean }) {
+  const { data, connected, error, events, restore } = useJourney();
+  const [visualChapter, setVisualChapter] = useState<number | null>(null);
+  const [fullscreen, setFullscreen] = useState(false),
+    [controls, setControls] = useState(true),
+    [fullscreenError, setFullscreenError] = useState("");
+  const hideControls = useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined,
+  );
+  const reveal = () => {
+    setControls(true);
+    clearTimeout(hideControls.current);
+    hideControls.current = setTimeout(() => setControls(false), 3500);
+  };
+  useEffect(() => {
+    const changed = () => setFullscreen(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange", changed);
+    if (presenting) reveal();
+    return () => {
+      document.removeEventListener("fullscreenchange", changed);
+      clearTimeout(hideControls.current);
+    };
+  }, [presenting]);
+  async function toggleFullscreen() {
+    try {
+      setFullscreenError("");
+      if (document.fullscreenElement) await document.exitFullscreen();
+      else if (document.documentElement.requestFullscreen)
+        await document.documentElement.requestFullscreen();
+      else
+        setFullscreenError(
+          "Fullscreen is unavailable in this browser. The presentation still fills this window.",
+        );
+    } catch {
+      setFullscreenError(
+        "Fullscreen could not start. The presentation still fills this window.",
+      );
+    }
+  }
   const [reduced, setReduced] = useState(
       matchMedia("(prefers-reduced-motion: reduce)").matches,
     ),
@@ -213,8 +353,8 @@ function Screen() {
       amount: number;
       count: number;
       name: string;
-    } | null>(null),
-    [travel, setTravel] = useState<number | null>(null);
+      rewards: string[];
+    } | null>(null);
   const seen = useRef(0),
     initialised = useRef(false),
     audio = useRef<AudioContext | null>(null);
@@ -229,18 +369,26 @@ function Screen() {
     if (!fresh.length) {
       if (!events.length) {
         setNotice(null);
-        setTravel(null);
       }
       return;
     }
     seen.current = fresh.at(-1)!.id;
-    setNotice({
-      amount: fresh.reduce((s, x) => s + x.amount, 0),
-      count: fresh.length,
-      name: fresh.length === 1 ? fresh[0].name : "",
-    });
-    const crossed = fresh.find((x) => x.level > x.previousLevel);
-    if (crossed && !reduced) setTravel(crossed.previousLevel);
+    const earned =
+      data?.config.chapters
+        .filter((_, i) =>
+          fresh.some((e) => i > e.previousLevel && i <= e.level),
+        )
+        .map((ch) => ch.reward)
+        .filter((reward) => reward !== null) ?? [];
+    setNotice((previous) => ({
+      amount:
+        (previous?.amount ?? 0) +
+        fresh.reduce((sum, event) => sum + event.amount, 0),
+      count: (previous?.count ?? 0) + fresh.length,
+      name: !previous && fresh.length === 1 ? fresh[0].name : "",
+      rewards: [...new Set([...(previous?.rewards ?? []), ...earned])],
+    }));
+
     if (sound && audio.current) {
       const o = audio.current.createOscillator(),
         g = audio.current.createGain();
@@ -258,40 +406,32 @@ function Screen() {
     }
     const timeout = setTimeout(() => setNotice(null), 4500);
     return () => clearTimeout(timeout);
-  }, [events, reduced, sound]);
+  }, [events]);
   useEffect(() => {
-    if (travel === null) return;
-    const timer = setTimeout(
-      () =>
-        setTravel((v) =>
-          v === null
-            ? null
-            : v >= Math.min(data?.state.level ?? 0, 5)
-              ? null
-              : v + 1,
-        ),
-      850,
-    );
-    return () => clearTimeout(timer);
-  }, [travel, data?.state.level]);
+    if (data) {
+      seen.current = data.state.eventId;
+      setNotice(null);
+    }
+  }, [restore]);
   if (!data)
     return <div className="loading">{error || "Packing the satchel…"}</div>;
   const { config, state } = data;
   const c = config.chapters[state.chapter];
+  const visible = config.chapters[visualChapter ?? state.chapter];
   const url = config.publicUrl + "/donate";
-  const displayState =
-    travel === null
-      ? state
-      : {
-          ...state,
-          ...progression(
-            config.chapters[Math.min(travel, 5)].threshold,
-            config,
-          ),
-        };
   return (
-    <main className="screen">
+    <main
+      className={`screen ${presenting ? "presentation" : "overview"} ${controls ? "controls-visible" : "controls-hidden"}`}
+      onPointerMove={presenting ? reveal : undefined}
+      onFocusCapture={presenting ? reveal : undefined}
+      onKeyDown={presenting ? reveal : undefined}
+    >
       <Header mode={state.mode} connected={connected} config={config} />
+      {!presenting && (
+        <a className="present-link" href="/screen">
+          Present adventure <span>↗</span>
+        </a>
+      )}
       <section className="intro">
         <div>
           <p className="eyebrow">
@@ -315,21 +455,21 @@ function Screen() {
       <section className="adventure">
         <div className="scene">
           <World
-            state={displayState}
+            state={state}
             events={events}
             reduced={reduced}
             config={config}
+            restore={restore}
+            onChapter={setVisualChapter}
           />
           <div className="scene-title">
             <span className="chapter-label">
-              CHAPTER {String(state.chapter + 1).padStart(2, "0")} / 06
+              CHAPTER{" "}
+              {String((visualChapter ?? state.chapter) + 1).padStart(2, "0")} /
+              06
             </span>
-            <h2>
-              {travel === null
-                ? c.name
-                : config.chapters[Math.min(travel, 5)].name}
-            </h2>
-            <p>{c.subtitle}</p>
+            <h2>{visible.name}</h2>
+            <p>{visible.subtitle}</p>
           </div>
           <div className="scene-bottom">
             <span className="location-pin">⌖ BERLIN, DE</span>
@@ -365,12 +505,24 @@ function Screen() {
                       ? `Thank you, ${notice.name}.`
                       : "A little kindness just arrived."}
                 </small>
+                {!!notice.rewards.length && (
+                  <small className="earned-rewards">
+                    Collected:{" "}
+                    {notice.rewards
+                      .map(
+                        (reward) =>
+                          ({
+                            hat: "cap",
+                            sunglasses: "shades",
+                            shirt: "tee",
+                            bag: "orange bag",
+                            key: "treasure key",
+                          })[reward] ?? reward,
+                      )
+                      .join(" · ")}
+                  </small>
+                )}
               </div>
-            </div>
-          )}
-          {travel !== null && (
-            <div className="montage">
-              THE JOURNEY CONTINUES <span>↗</span>
             </div>
           )}
         </div>
@@ -419,12 +571,26 @@ function Screen() {
               : state.mode === "signet"
                 ? "Test network · no real prize money"
                 : "Bitcoin · Lightning · Ark"}
-            <br />
+            {presenting ? " " : <br />}
             All contributions grow the community pool.
           </p>
         </aside>
       </section>
       <section className="journey">
+        {presenting && (
+          <div className="presentation-progress">
+            <span>
+              {state.vaultOpen
+                ? "The vault is open ✦"
+                : `${c.name} · ${sats(state.remaining)} sats to go`}
+            </span>
+            <progress
+              max="1"
+              value={state.progress}
+              aria-label="Current chapter progress"
+            />
+          </div>
+        )}
         <div className="journey-heading">
           <span className="eyebrow">OUR BERLIN JOURNEY</span>
           <span>
@@ -480,9 +646,24 @@ function Screen() {
           >
             {sound ? "Sound on" : "Sound off"}
           </button>
+          {presenting ? (
+            <>
+              <button onClick={toggleFullscreen}>
+                {fullscreen ? "Exit fullscreen" : "Fullscreen ↗"}
+              </button>
+              <a href="/">Overview ↗</a>
+            </>
+          ) : (
+            <a href="/screen">Present adventure ↗</a>
+          )}
           <a href="/admin">Operator ↗</a>
         </div>
       </footer>
+      {fullscreenError && (
+        <div className="connection-note" role="status">
+          {fullscreenError}
+        </div>
+      )}
       {!connected && (
         <div className="connection-note">Reconnecting to the journey…</div>
       )}
@@ -918,5 +1099,11 @@ function Admin() {
 }
 const path = location.pathname;
 createRoot(document.getElementById("root")!).render(
-  path === "/admin" ? <Admin /> : path === "/donate" ? <Donate /> : <Screen />,
+  path === "/admin" ? (
+    <Admin />
+  ) : path === "/donate" ? (
+    <Donate />
+  ) : (
+    <Screen presenting={path === "/screen"} />
+  ),
 );

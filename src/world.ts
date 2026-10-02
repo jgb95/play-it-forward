@@ -264,6 +264,8 @@ export function background(scene: number, vaultOpen: boolean, tier: number) {
         i % 3 === 0 ? "#33473b" : "#223b33",
       );
     box(c, 0, 222, 640, 78, "#344435");
+    c.save();
+    c.translate(170, 0);
     box(c, 204, 62, 230, 166, "#56624a");
     box(c, 211, 55, 216, 179, "#73806a");
     box(c, 218, 61, 202, 165, "#233c35");
@@ -295,6 +297,7 @@ export function background(scene: number, vaultOpen: boolean, tier: number) {
       box(c, 315, 121, 6, 51, "#8e986d");
       box(c, 309, 143, 19, 10, "#d1b781");
     }
+    c.restore();
     lamp(c, 175, 231);
     lamp(c, 465, 231);
     stall(c, 44, 243, "#3a6150");
@@ -312,18 +315,26 @@ function courier(
   t: number,
   rewards: string[],
   celebrate: boolean,
+  walking: boolean,
 ) {
   c.save();
   c.translate(Math.round(x), Math.round(y));
   c.scale(2, 2);
-  const step = Math.sin(t * 4),
-    bob = celebrate ? Math.sin(t * 12) * 2 : Math.abs(step) * 0.5;
+  const step = walking ? Math.sin(t * 12) : 0,
+    bob = walking ? Math.abs(step) * 0.7 : 0;
   box(c, -8, 1, 18, 2, "#102a2588");
   c.translate(0, -bob);
   box(c, -5, -14, 4, 13 + (step > 0 ? 0 : -1), "#152425");
   box(c, 1, -14, 4, 13 + (step > 0 ? -1 : 0), "#1d3030");
   box(c, -6, -2 + Math.max(0, step), 6, 3, "#d4c8ad");
   box(c, 0, -2 + Math.max(0, -step), 7, 3, "#c9bfa8");
+  // Feet stay planted while the torso breathes and gently vibes.
+  c.translate(
+    walking ? 0 : Math.sin(t * 1.8) * 0.35,
+    walking
+      ? 0
+      : Math.sin(t * 2.2) * 0.45 + (celebrate ? Math.sin(t * 5) * 0.6 : 0),
+  );
   box(c, -7, -30, 14, 18, rewards.includes("shirt") ? "#f69743" : "#172729");
   box(c, -5, -30, 10, 3, "#273737");
   box(c, -9, -28, 3, 13, "#1c3030");
@@ -363,12 +374,11 @@ function courier(
   c.restore();
 }
 export type Trail = { born: number; index: number };
-export function render(
+function environment(
   c: CanvasRenderingContext2D,
   bg: HTMLCanvasElement,
   state: State,
   time: number,
-  trails: Trail[],
   reduced: boolean,
 ) {
   const t = reduced ? 0 : time;
@@ -386,9 +396,6 @@ export function render(
   if (scene === 1)
     for (let i = 0; i < 16; i++)
       box(c, (i * 47 + t * 5) % 640, 190 + (i % 5) * 7, 14, 1, "#c0b78955");
-  const x = scene === 5 ? 220 : 285 + Math.sin(t * 0.18) * 35,
-    y = 254;
-  courier(c, x, y, t, state.rewards, trails.length > 0);
   for (let i = 0; i < 16; i++) {
     const a = i * 2.4 + t * 0.15;
     const px = (i * 93 + t * 3) % 640,
@@ -407,17 +414,52 @@ export function render(
         "#bc9d66",
       );
   if (state.vaultOpen) {
-    glow(c, 319, 171, 75, "#ffd16e22");
+    glow(c, 489, 171, 75, "#ffd16e22");
     for (let i = 0; i < state.treasureTier * 2; i++)
       box(
         c,
-        265 + ((i * 31) % 111),
+        435 + ((i * 31) % 111),
         135 + Math.sin(t * 2 + i) * 8 + (i % 3) * 22,
         2,
         2,
         "#ffdda0",
       );
   }
+}
+export function render(
+  c: CanvasRenderingContext2D,
+  bg: HTMLCanvasElement,
+  state: State,
+  time: number,
+  trails: Trail[],
+  reduced: boolean,
+  pose: {
+    x: number;
+    walking: boolean;
+    slide: number;
+    incoming?: { bg: HTMLCanvasElement; state: State };
+  },
+) {
+  c.clearRect(0, 0, W, H);
+  c.save();
+  c.translate(-W * pose.slide, 0);
+  environment(c, bg, state, time, reduced);
+  if (pose.incoming) {
+    c.translate(W, 0);
+    environment(c, pose.incoming.bg, pose.incoming.state, time, reduced);
+  }
+  c.restore();
+  const x = pose.x,
+    y = 254;
+  courier(
+    c,
+    x,
+    y,
+    reduced ? 0 : time,
+    state.rewards,
+    trails.length > 0,
+    pose.walking && !reduced,
+  );
   if (reduced && trails.length) glow(c, x - 8, y - 27, 25, "#ffb95744");
   for (const trail of reduced ? [] : trails) {
     const p = Math.min(1, (time - trail.born) / 1.6);
