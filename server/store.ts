@@ -16,11 +16,13 @@ import type {
 import { progression } from "../shared/model.ts";
 export class Store {
   db: DatabaseSync;
+  nextConfig: Config;
   constructor(
     path: string,
     public config: Config,
     public mode: State["mode"],
   ) {
+    this.nextConfig = structuredClone(config);
     if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
     this.db = new DatabaseSync(path);
     this.db
@@ -38,6 +40,30 @@ export class Store {
     this.db
       .prepare("INSERT OR IGNORE INTO metadata VALUES(?,?)")
       .run("storyConfig", JSON.stringify(config));
+    this.db.exec("BEGIN IMMEDIATE");
+    this.db
+      .exec(`CREATE TABLE IF NOT EXISTS runs(id TEXT PRIMARY KEY,name TEXT NOT NULL,config TEXT NOT NULL,created INTEGER NOT NULL,finished INTEGER);
+      CREATE TABLE IF NOT EXISTS withdrawals(id TEXT PRIMARY KEY,payload TEXT NOT NULL);`);
+    const key = this.metadata("eventKey")!;
+    for (const table of ["requests", "events"]) {
+      const columns = this.db.prepare(`PRAGMA table_info(${table})`).all();
+      if (!columns.some((x) => x.name === "run_id")) {
+        this.db.exec(`ALTER TABLE ${table} ADD COLUMN run_id TEXT`);
+        this.db.prepare(`UPDATE ${table} SET run_id=?`).run(key);
+      }
+    }
+    this.db
+      .prepare("INSERT OR IGNORE INTO runs VALUES(?,?,?,?,NULL)")
+      .run(key, "Berlin adventure", this.metadata("storyConfig")!, Date.now());
+    this.db.exec("COMMIT");
+    const active = this.db
+      .prepare("SELECT config FROM runs WHERE id=?")
+      .get(key);
+    if (active)
+      this.config = {
+        ...JSON.parse(String(active.config)),
+        publicUrl: config.publicUrl,
+      };
   }
   bindWallet(fingerprint: string) {
     const existing = this.db
@@ -51,9 +77,11 @@ export class Store {
       .prepare("INSERT OR IGNORE INTO metadata VALUES('wallet',?)")
       .run(fingerprint);
   }
-  add(c: Contribution) {
+  add(c: Contribution, runId = this.metadata("eventKey")!) {
     this.db
-      .prepare("INSERT INTO requests VALUES(?,?,?,?,?,?,?,?)")
+      .prepare(
+        "INSERT INTO requests(id,amount,name,method,destination,uri,expires,created,run_id) VALUES(?,?,?,?,?,?,?,?,?)",
+      )
       .run(
         c.id,
         c.amount,
@@ -63,6 +91,7 @@ export class Store {
         c.uri,
         c.expires,
         c.created,
+        runId,
       );
   }
   all() {
@@ -100,24 +129,26 @@ export class Store {
             : "pending",
     };
   }
-  state(): State {
+  state(runId = this.metadata("eventKey")!): State {
     const s = this.db
       .prepare(
-        "SELECT COALESCE(SUM(amount),0) total,COUNT(*) count FROM receipts",
+        "SELECT COALESCE(SUM(r.amount),0) total,COUNT(*) count FROM receipts r JOIN requests q ON q.id=r.request_id WHERE q.run_id=?",
       )
-      .get()!;
+      .get(runId)!;
     const total = Number(s.total);
     return {
       total,
       count: Number(s.count),
-      ...progression(total, this.config),
+      ...progression(total, this.runConfig(runId)),
       eventId: Number(
         this.db.prepare("SELECT COALESCE(MAX(id),0) id FROM events").get()!.id,
       ),
       mode: this.mode,
       eventMode: this.eventMode(),
-      eventKey: this.metadata("eventKey")!,
-      onchain: this.observations().filter((x) => x.status === "pending"),
+      eventKey: runId,
+      onchain: this.observations().filter(
+        (x) => x.status === "pending" && this.requestRun(x.requestId) === runId,
+      ),
     };
   }
   credit(r: Receipt) {
@@ -127,7 +158,8 @@ export class Store {
     try {
       const request = this.get(r.requestId);
       if (!request) throw Error("Unknown contribution");
-      const before = this.state();
+      const runId = this.requestRun(r.requestId)!;
+      const before = this.state(runId);
       if (!Number.isSafeInteger(before.total + r.amount))
         throw Error("Pool exceeds safe integer range");
       const changed = this.db
@@ -137,8 +169,9 @@ export class Store {
         this.db.exec("COMMIT");
         return null;
       }
-      const after = this.state();
+      const after = this.state(runId);
       const payload = {
+        runId,
         amount: r.amount,
         name: request.name,
         method: request.method,
@@ -150,8 +183,11 @@ export class Store {
       };
       const id = Number(
         this.db
-          .prepare("INSERT INTO events(kind,payload,created) VALUES(?,?,?)")
-          .run("donation", JSON.stringify(payload), Date.now()).lastInsertRowid,
+          .prepare(
+            "INSERT INTO events(kind,payload,created,run_id) VALUES(?,?,?,?)",
+          )
+          .run("donation", JSON.stringify(payload), Date.now(), runId)
+          .lastInsertRowid,
       );
       this.db.exec("COMMIT");
       return { id, ...payload };
@@ -163,33 +199,79 @@ export class Store {
   events(after: number) {
     return this.db
       .prepare(
-        "SELECT id,kind,payload FROM events WHERE id>? ORDER BY id LIMIT 200",
+        "SELECT id,kind,payload FROM events WHERE id>? AND run_id=? ORDER BY id LIMIT 200",
       )
-      .all(after) as unknown as { id: number; kind: string; payload: string }[];
+      .all(after, this.metadata("eventKey")!) as unknown as {
+      id: number;
+      kind: string;
+      payload: string;
+    }[];
   }
   reset() {
     if (this.mode !== "demo")
       throw Error("Reset is available only in demo mode");
+    this.startRun("Rehearsal adventure");
+  }
+  requestRun(id: string): string | undefined {
+    return this.db.prepare("SELECT run_id FROM requests WHERE id=?").get(id)
+      ?.run_id as string | undefined;
+  }
+  runConfig(id: string): Config {
+    const row = this.db.prepare("SELECT config FROM runs WHERE id=?").get(id);
+    if (!row) throw Error("Unknown run");
+    const config = JSON.parse(String(row.config));
+    config.publicUrl = this.config.publicUrl;
+    return config;
+  }
+  runs() {
+    return this.db
+      .prepare(
+        "SELECT id,name,created,finished FROM runs ORDER BY created DESC,rowid DESC",
+      )
+      .all()
+      .map((r) => ({
+        ...r,
+        total: this.state(String(r.id)).total,
+        active: r.id === this.metadata("eventKey"),
+        featured: r.id === this.metadata("featuredRun"),
+      }));
+  }
+  featureRun(id: string) {
+    this.runConfig(id);
+    this.db
+      .prepare("INSERT OR REPLACE INTO metadata VALUES('featuredRun',?)")
+      .run(id);
+  }
+  startRun(name: string) {
+    if (!name.trim() || name.length > 80)
+      throw Error("Enter a run name of 1–80 characters");
+    const id = randomUUID(),
+      now = Date.now();
     this.db.exec("BEGIN IMMEDIATE");
     try {
-      this.db.exec(
-        "DELETE FROM receipts; DELETE FROM requests; DELETE FROM observations; DELETE FROM acceleration_quotes; DELETE FROM accelerations",
-      );
+      const old = this.metadata("eventKey")!;
+      this.db.prepare("UPDATE runs SET finished=? WHERE id=?").run(now, old);
+      if (!this.metadata("featuredRun")) this.featureRun(old);
       this.db
-        .prepare("UPDATE metadata SET value=? WHERE key='storyConfig'")
-        .run(JSON.stringify(this.config));
+        .prepare("INSERT INTO runs VALUES(?,?,?,?,NULL)")
+        .run(id, name.trim(), JSON.stringify(this.nextConfig), now);
       this.db
         .prepare("UPDATE metadata SET value=? WHERE key='eventKey'")
-        .run(randomUUID());
+        .run(id);
       this.db
-        .prepare("INSERT INTO events(kind,payload,created) VALUES(?,?,?)")
-        .run("reset", "{}", Date.now());
+        .prepare("UPDATE metadata SET value=? WHERE key='storyConfig'")
+        .run(JSON.stringify(this.nextConfig));
+      this.config = structuredClone(this.nextConfig);
+      this.setEventMode("live");
+      this.journal("reset", {});
       this.db.exec("COMMIT");
+      return id;
     } catch (e) {
       this.db.exec("ROLLBACK");
       throw e;
     }
   }
+
   metadata(key: string) {
     return (
       this.db.prepare("SELECT value FROM metadata WHERE key=?").get(key) as
@@ -205,12 +287,26 @@ export class Store {
       .prepare("INSERT OR REPLACE INTO metadata VALUES(?,?)")
       .run("eventMode", mode);
   }
-  journal(kind: StoryEvent["kind"], payload: unknown) {
+  journal(kind: StoryEvent["kind"], payload: any) {
     const created = Date.now();
     const id = Number(
       this.db
-        .prepare("INSERT INTO events(kind,payload,created) VALUES(?,?,?)")
-        .run(kind, JSON.stringify(payload), created).lastInsertRowid,
+        .prepare(
+          "INSERT INTO events(kind,payload,created,run_id) VALUES(?,?,?,?)",
+        )
+        .run(
+          kind,
+          JSON.stringify(payload),
+          created,
+          payload.requestId
+            ? this.requestRun(payload.requestId)!
+            : payload.txid
+              ? (this.observations()
+                  .filter((o) => o.txid === payload.txid)
+                  .map((o) => this.requestRun(o.requestId))[0] ??
+                this.metadata("eventKey")!)
+              : this.metadata("eventKey")!,
+        ).lastInsertRowid,
     );
     return { id, kind, created, payload };
   }
@@ -292,19 +388,25 @@ export class Store {
       throw e;
     }
   }
-  history(after = 0, cutoff = this.state().eventId, limit = 200): HistoryPage {
+  history(
+    after = 0,
+    cutoff = this.state().eventId,
+    limit = 200,
+    runId = this.metadata("eventKey")!,
+  ): HistoryPage {
+    const config = this.runConfig(runId);
     const reset = Number(
       this.db
         .prepare(
-          "SELECT COALESCE(MAX(id),0) id FROM events WHERE kind='reset' AND id<=?",
+          "SELECT COALESCE(MAX(id),0) id FROM events WHERE kind='reset' AND id<=? AND run_id=?",
         )
-        .get(cutoff)!.id,
+        .get(cutoff, runId)!.id,
     );
     const rows = this.db
       .prepare(
-        "SELECT id,kind,payload,created FROM events WHERE id>? AND id<=? ORDER BY id LIMIT ?",
+        "SELECT id,kind,payload,created FROM events WHERE id>? AND id<=? AND run_id=? ORDER BY id LIMIT ?",
       )
-      .all(Math.max(after, reset), cutoff, limit + 1) as {
+      .all(Math.max(after, reset), cutoff, runId, limit + 1) as {
       id: number;
       kind: StoryEvent["kind"];
       payload: string;
@@ -315,14 +417,13 @@ export class Store {
       .map((x) => ({ ...x, payload: JSON.parse(x.payload) }));
     const last = this.db
       .prepare(
-        "SELECT payload FROM events WHERE kind='donation' AND id<=? AND id>? ORDER BY id DESC LIMIT 1",
+        "SELECT payload FROM events WHERE kind='donation' AND id<=? AND id>? AND run_id=? ORDER BY id DESC LIMIT 1",
       )
-      .get(cutoff, reset) as { payload: string } | undefined;
-    const config = JSON.parse(this.metadata("storyConfig")!);
-    config.publicUrl = this.config.publicUrl;
+      .get(cutoff, reset, runId) as { payload: string } | undefined;
+
     return {
       config,
-      eventKey: this.metadata("eventKey")!,
+      eventKey: runId,
       events,
       cutoff,
       after: events.at(-1)?.id ?? Math.max(after, reset),

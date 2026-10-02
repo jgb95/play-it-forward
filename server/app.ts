@@ -23,6 +23,8 @@ import {
 } from "./acceleration.ts";
 import { MovieDirector } from "./movie.ts";
 import { Store } from "./store.ts";
+import { Withdrawals } from "./withdrawals.ts";
+import { BarkAdapter } from "./payments.ts";
 import type { PaymentAdapter } from "./payments.ts";
 export function createApp(
   store: Store,
@@ -37,6 +39,10 @@ export function createApp(
     accelerationEnabled?: boolean;
   } = {},
 ) {
+  const withdrawals =
+    adapter instanceof BarkAdapter
+      ? new Withdrawals(store, adapter)
+      : undefined;
   const app = express();
   if (options.rehearsal) app.use("/rehearsal", options.rehearsal);
   app.disable("x-powered-by");
@@ -95,7 +101,20 @@ export function createApp(
   const invoiceLocks = new Set<string>();
   let accelerationError: string | null = null;
   const publishStory = (event: ReturnType<Store["journal"]> | null) => {
-    if (event)
+    if (
+      event &&
+      (event.payload.requestId
+        ? store.requestRun(event.payload.requestId) === state().eventKey
+        : event.payload.txid
+          ? store
+              .observations()
+              .some(
+                (o) =>
+                  o.txid === event.payload.txid &&
+                  store.requestRun(o.requestId) === state().eventKey,
+              )
+          : true)
+    )
       broadcast(
         event.kind === "acceleration" ? "acceleration" : "onchain",
         { event, state: state() },
@@ -167,7 +186,8 @@ export function createApp(
     clients.forEach((res) => send(res, event, payload, id));
   const credit = (receipt: Parameters<Store["credit"]>[0]) => {
     const event = store.credit(receipt);
-    if (event) broadcast("donation", { event, state: state() }, event.id);
+    if (event && event.runId === state().eventKey)
+      broadcast("donation", { event, state: state() }, event.id);
     return event;
   };
   async function reconcile() {
@@ -239,7 +259,15 @@ export function createApp(
       res.status(400).json({ error: "Invalid history cursor" });
       return;
     }
-    res.json(store.history(after, cutoff));
+    const runId =
+      req.query.run === "featured"
+        ? (store.metadata("featuredRun") ?? state().eventKey)
+        : String(req.query.run ?? state().eventKey);
+    try {
+      res.json(store.history(after, cutoff, 200, runId));
+    } catch {
+      res.status(404).json({ error: "Run not found" });
+    }
   });
   app.get("/api/events", (req, res) => {
     if (clients.size >= 150) {
@@ -298,6 +326,7 @@ export function createApp(
         res.status(400).json({ error: "Payment method is disabled" });
         return;
       }
+      const runId = state().eventKey;
       const identity = await adapter.health?.();
       if (identity) store.bindWallet(identity);
       const c = await adapter.create(
@@ -305,7 +334,7 @@ export function createApp(
         parsed.data.name,
         parsed.data.method,
       );
-      store.add(c);
+      store.add(c, runId);
       res.status(201).json(c);
     } catch (e) {
       next(e);
@@ -411,6 +440,9 @@ export function createApp(
       state: state(),
       presentation,
       movie: movie.status(Date.now()),
+      runs: store.runs(),
+      withdrawalsEnabled: !!withdrawals,
+      withdrawals: withdrawals?.list() ?? [],
       liveReady: store.mode === "mainnet" && !syncError && lastSync !== null,
     }),
   );
@@ -422,6 +454,58 @@ export function createApp(
     store.setEventMode(req.body.mode);
     broadcast("snapshot", state(), state().eventId);
     res.json(state());
+  });
+  app.post("/api/admin/runs", (req, res) => {
+    try {
+      movie.stop();
+      stagedMovie = undefined;
+      store.startRun(String(req.body.name ?? ""));
+      broadcast("reset", state(), state().eventId);
+      res.json(store.runs());
+    } catch (e) {
+      res.status(400).json({ error: (e as Error).message });
+    }
+  });
+  app.post("/api/admin/runs/feature", (req, res) => {
+    try {
+      store.featureRun(String(req.body.id));
+      res.json(store.runs());
+    } catch {
+      res.status(404).json({ error: "Run not found" });
+    }
+  });
+  app.get("/api/admin/wallet", async (_req, res) => {
+    try {
+      if (!withdrawals)
+        throw Error("Real wallet withdrawals are unavailable in rehearsal");
+      res.json(await withdrawals.balances());
+    } catch (e) {
+      res.status(503).json({ error: (e as Error).message });
+    }
+  });
+  app.post("/api/admin/withdrawals/preview", async (req, res) => {
+    try {
+      if (!withdrawals) throw Error("Simulation cannot withdraw real funds");
+      if (!["ark", "bitcoin"].includes(req.body.kind))
+        throw Error("Choose Ark or Bitcoin balance");
+      res.json(
+        await withdrawals.preview(
+          req.body.kind,
+          String(req.body.destination ?? ""),
+        ),
+      );
+    } catch (e) {
+      res.status(400).json({ error: (e as Error).message });
+    }
+  });
+  app.post("/api/admin/withdrawals/send", async (req, res) => {
+    try {
+      if (!withdrawals || req.body.confirm !== "SEND")
+        throw Error("Confirm the reviewed withdrawal explicitly");
+      res.json(await withdrawals.send(String(req.body.id)));
+    } catch (e) {
+      res.status(400).json({ error: (e as Error).message });
+    }
   });
   async function demoDetection(amount: number, name: string) {
     const parsed = contributionSchema.parse({

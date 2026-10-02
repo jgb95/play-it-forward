@@ -679,15 +679,19 @@ function World({
     />
   );
 }
-async function history(after = 0, cutoff?: number): Promise<HistoryPage> {
+async function history(
+  after = 0,
+  cutoff?: number,
+  run?: string,
+): Promise<HistoryPage> {
   const first = await api<HistoryPage>(
-    `/history?after=${after}${cutoff === undefined ? "" : `&cutoff=${cutoff}`}`,
+    `/history?after=${after}${cutoff === undefined ? "" : `&cutoff=${cutoff}`}${run ? `&run=${encodeURIComponent(run)}` : ""}`,
   );
   let page = first;
   const events = [...first.events];
   while (page.more) {
     page = await api<HistoryPage>(
-      `/history?after=${page.after}&cutoff=${first.cutoff}`,
+      `/history?after=${page.after}&cutoff=${first.cutoff}&run=${encodeURIComponent(first.eventKey)}`,
     );
     events.push(...page.events);
   }
@@ -751,7 +755,13 @@ function Screen({ presenting = false }: { presenting?: boolean }) {
   async function start(kind: "intro" | "replay") {
     setPreparing(true);
     try {
-      const h = await history();
+      const h = await history(
+        0,
+        undefined,
+        kind === "replay"
+          ? (new URLSearchParams(location.search).get("run") ?? "featured")
+          : data?.state.eventKey,
+      );
       setSession({ id: crypto.randomUUID(), kind, history: h });
       setPlaybackControl((p) => ({ ...p, paused: false }));
     } catch (e) {
@@ -762,6 +772,10 @@ function Screen({ presenting = false }: { presenting?: boolean }) {
   }
   useEffect(() => {
     if (!data || initialized.current === data.state.eventKey) return;
+    setSession(null);
+    setDisplay(null);
+    setFinished(false);
+    setPlaybackMode("live");
     initialized.current = data.state.eventKey ?? "event";
     const q = new URLSearchParams(location.search);
     if (q.has("replay") || data.state.eventMode === "archive")
@@ -1660,6 +1674,246 @@ function Donate() {
     </main>
   );
 }
+function RunAndWalletControls({
+  health,
+  refresh,
+}: {
+  health: any;
+  refresh: () => Promise<void>;
+}) {
+  const [name, setName] = useState("Berlin adventure"),
+    [destination, setDestination] = useState(""),
+    [kind, setKind] = useState("ark"),
+    [wallet, setWallet] = useState<any>(null),
+    [review, setReview] = useState<any>(null),
+    [message, setMessage] = useState(""),
+    [busy, setBusy] = useState(false),
+    [confirm, setConfirm] = useState("");
+  async function action(fn: () => Promise<void>) {
+    setBusy(true);
+    setMessage("");
+    try {
+      await fn();
+      await refresh();
+    } catch (e) {
+      setMessage((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="admin-grid">
+      <section className="admin-card">
+        <p className="eyebrow">SAVED GAME RUNS</p>
+        <h2>Every adventure has a history</h2>
+        <p>
+          Starting a new run saves this one and starts progress at zero. Late
+          donations remain with the run that issued their payment request.
+          Wallet funds stay in the shared organizer wallet.
+        </p>
+        <label htmlFor="run-name">Next run’s name</label>
+        <input
+          id="run-name"
+          value={name}
+          maxLength={80}
+          onChange={(e) => setName(e.target.value)}
+        />
+        <button
+          className="secondary"
+          disabled={busy || !name.trim()}
+          onClick={() => {
+            if (
+              window.confirm(
+                "Save this run and start a new adventure at zero? No funds will move.",
+              )
+            )
+              void action(async () => {
+                await api("/admin/runs", { name });
+                setMessage("Previous run saved. New adventure started.");
+              });
+          }}
+        >
+          Finish run & start new
+        </button>
+        {health.runs?.map((r: any) => (
+          <div key={r.id} className="run-row">
+            <b>{r.name}</b>
+            <p>
+              {sats(r.total)} sats · {r.active ? "Active" : "Saved"}
+              {r.featured ? " · Public replay" : ""}
+            </p>
+            <a href={BASE + "/screen?replay=1&run=" + encodeURIComponent(r.id)}>
+              Replay this run ↗
+            </a>
+            <button
+              className="secondary"
+              disabled={busy || r.featured}
+              onClick={() =>
+                void action(async () => {
+                  await api("/admin/runs/feature", { id: r.id });
+                  setMessage("Public archive replay selected.");
+                })
+              }
+            >
+              Use as public replay
+            </button>
+          </div>
+        ))}
+      </section>
+      <section className="admin-card">
+        <p className="eyebrow">ORGANIZER WALLET</p>
+        <h2>Withdraw funds</h2>
+        {!health.withdrawalsEnabled ? (
+          <p>Rehearsal has no access to real wallet funds.</p>
+        ) : (
+          <>
+            <p>
+              These balances include all game runs. Withdrawals do not change
+              their recorded amounts raised. Close contributions with Event
+              archive before sending.
+            </p>
+            <button
+              className="secondary"
+              disabled={busy}
+              onClick={() =>
+                void action(async () => setWallet(await api("/admin/wallet")))
+              }
+            >
+              Refresh wallet balances
+            </button>
+            {wallet && (
+              <p>
+                Ark: {sats(wallet.ark.spendable_sat)} sats · Bitcoin:{" "}
+                {sats(wallet.bitcoin.confirmed_sat)} confirmed sats
+              </p>
+            )}
+            <label htmlFor="withdraw-kind">Balance to withdraw</label>
+            <select
+              id="withdraw-kind"
+              value={kind}
+              onChange={(e) => {
+                setKind(e.target.value);
+                setReview(null);
+                setConfirm("");
+              }}
+            >
+              <option value="ark">Entire Ark balance → Bitcoin</option>
+              <option value="bitcoin">Entire on-chain Bitcoin balance</option>
+            </select>
+            <label htmlFor="withdraw-address">
+              Your receiving Bitcoin address (bc1p…)
+            </label>
+            <input
+              id="withdraw-address"
+              value={destination}
+              onChange={(e) => {
+                setDestination(e.target.value.trim());
+                setReview(null);
+                setConfirm("");
+              }}
+              placeholder="bc1p…"
+              autoComplete="off"
+            />
+            <button
+              className="secondary"
+              disabled={
+                busy || !destination || health.state.eventMode !== "archive"
+              }
+              onClick={() =>
+                void action(async () => {
+                  setReview(
+                    await api("/admin/withdrawals/preview", {
+                      kind,
+                      destination,
+                    }),
+                  );
+                  setConfirm("");
+                })
+              }
+            >
+              Review withdrawal
+            </button>
+            {review && (
+              <div className="withdraw-review">
+                <h3>Review before sending</h3>
+                <p style={{ overflowWrap: "anywhere" }}>{review.destination}</p>
+                <p>
+                  {sats(review.gross)} sats balance · {sats(review.fee)} sats{" "}
+                  {review.feeEstimated ? "estimated fee" : "quoted fee"} ·
+                  approximately {sats(review.net)} sats received.
+                </p>
+                <p>
+                  Review expires after 60 seconds. Bark uses current fees when
+                  broadcasting; the final fee can change. A private ledger
+                  backup is saved before sending. Keep your wallet backup
+                  secure.
+                </p>
+                <label htmlFor="withdraw-confirm">
+                  Type SEND to confirm this transfer
+                </label>
+                <input
+                  id="withdraw-confirm"
+                  value={confirm}
+                  onChange={(e) => setConfirm(e.target.value)}
+                  autoComplete="off"
+                />
+                <button
+                  className="primary"
+                  disabled={
+                    busy || confirm !== "SEND" || review.expires < Date.now()
+                  }
+                  onClick={() =>
+                    void action(async () => {
+                      const r = await api<any>("/admin/withdrawals/send", {
+                        id: review.id,
+                        confirm,
+                      });
+                      setReview(null);
+                      setConfirm("");
+                      setMessage("Withdrawal broadcast: " + r.txid);
+                      setWallet(await api("/admin/wallet"));
+                    })
+                  }
+                >
+                  Send funds
+                </button>
+              </div>
+            )}
+            {health.withdrawals?.map((w: any) => (
+              <div key={w.id} className="run-row">
+                <b>
+                  {w.kind} withdrawal · {w.status}
+                </b>
+                <p>
+                  {sats(w.gross)} sats · {new Date(w.created).toLocaleString()}
+                </p>
+                {w.txid && (
+                  <a
+                    href={
+                      (health.mode === "mainnet"
+                        ? "https://mempool.space/tx/"
+                        : "https://mempool.space/signet/tx/") + w.txid
+                    }
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    View transaction ↗
+                  </a>
+                )}
+                {w.error && <p role="alert">{w.error}</p>}
+              </div>
+            ))}
+          </>
+        )}
+        {message && (
+          <p role="status" className="message">
+            {message}
+          </p>
+        )}
+      </section>
+    </div>
+  );
+}
 function Admin() {
   const { data, connected } = useJourney();
   const [token, setToken] = useState(""),
@@ -1752,6 +2006,7 @@ function Admin() {
         </form>
       ) : (
         <>
+          <RunAndWalletControls health={health} refresh={refresh} />
           <div className="admin-grid">
             <section className="admin-card">
               <p className="eyebrow">JOURNEY HEALTH</p>
@@ -1924,7 +2179,7 @@ function Admin() {
                     void act("reset", {});
                 }}
               >
-                Reset demo adventure
+                Save & restart demo adventure
               </button>
             </section>
           </div>

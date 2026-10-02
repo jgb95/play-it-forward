@@ -1729,4 +1729,18 @@ input::placeholder {
   }
 }
 
-.departures,.presentation .playback-controls {color:#f0eddf;}
+.departures,
+.presentation .playback-controls {
+  color: #f0eddf;
+}
+
+.run-row,
+.withdraw-review {
+  border-top: 1px solid var(--line);
+  padding-top: 1rem;
+  margin-top: 1rem;
+}
+.run-row a {
+  display: block;
+  margin-bottom: 0.7rem;
+}
