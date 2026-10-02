@@ -1,3 +1,5 @@
+import { encounterPose, portalFor, formationSlot } from "./encounters";
+import { clipEntrance } from "./scenery";
 import type { Recruit } from "../shared/model";
 const outfits: Record<string, [string, string, string]> = {
   volunteer: ["#f6a552", "#e4bd9b", "#443632"],
@@ -16,6 +18,7 @@ export function actor(
   walking: boolean,
   waving = false,
   scale = 1.4,
+  facing = 1,
 ) {
   const [coat, skin, hair] = outfits[sprite] ?? outfits.volunteer;
   const step = walking ? Math.sin(time * 11) : 0;
@@ -25,7 +28,7 @@ export function actor(
   };
   c.save();
   c.translate(Math.round(x), Math.round(y));
-  c.scale(scale, scale);
+  c.scale(scale * facing, scale);
   rect(-6, 0, 13, 2, "#09232966");
   rect(-4, -12, 3, 12, "#22303b");
   rect(2, -12, 3, 12, "#283847");
@@ -33,10 +36,12 @@ export function actor(
   rect(1, -1 + Math.max(0, -step), 5, 2, "#cbbfb0");
   c.translate(0, walking ? -Math.abs(step) * 0.6 : Math.sin(time * 2) * 0.25);
   rect(-6, -25, 12, 14, coat);
-  rect(-7, -22, 2, 10, coat);
-  rect(-7, -13, 2, 3, skin);
-  rect(6, -23, 2, waving ? 5 : 10, coat);
-  rect(waving ? 8 : 6, waving ? -26 : -14, 3, 3, skin);
+  const swing = walking ? step * 2 : 0;
+  rect(-7, -22 + swing, 2, 10, coat);
+  rect(-7, -13 + swing, 2, 3, skin);
+  rect(6, -23 - swing, 2, waving ? 5 : 10, coat);
+  if (waving) rect(7, -22, 6, 3, coat);
+  rect(waving ? 12 : 6, waving ? -22 : -14 - swing, 3, 3, skin);
   rect(-4, -36, 9, 11, skin);
   rect(-5, -37, 11, 4, hair);
   rect(-5, -34, 2, 7, hair);
@@ -85,29 +90,42 @@ export function crewActors(
   walking: boolean,
   joins: Map<string, number>,
   reduced: boolean,
+  scene = 0,
+  handing = new Set<string>(),
+  joinSeconds = 2.1,
 ) {
   for (let i = crew.length - 1; i >= 0; i--) {
-    const member = crew[i],
-      column = Math.floor(i / 2) + 1,
-      row = i % 2;
-    const target = Math.max(12, x - column * 24),
-      feet = y - (row ? 17 : 2);
+    const member = crew[i];
+    if (handing.has(member.id)) continue;
+    const slot = formationSlot(x, y, i);
+    const target = slot.x,
+      feet = slot.y;
     const joined = joins.get(member.id),
       p =
         joined === undefined || reduced
           ? 1
-          : Math.min(1, Math.max(0, (time - joined) / 1.3));
-    const from = Math.min(617, x + 65);
+          : Math.min(1, Math.max(0, (time - joined) / joinSeconds));
+    const portal = portalFor(scene, i);
+    const pavement = Math.max(0, (p - 0.3) / 0.7);
+    const memberX = p < 1 ? portal.x + (target - portal.x) * pavement : target;
+    const memberY =
+      p < 0.3
+        ? portal.y + (5 * p) / 0.3
+        : portal.y + (feet - portal.y) * pavement;
+    c.save();
+    if (p < 1) clipEntrance(c, portal);
     actor(
       c,
-      from + (target - from) * (p * p * (3 - 2 * p)),
-      feet,
+      memberX,
+      memberY,
       reduced ? 0 : time,
       member.sprite,
       walking || p < 1,
-      p < 0.5,
+      p > 0.7 && p < 0.95,
       1.25,
+      p < 1 && target < portal.x ? -1 : 1,
     );
+    c.restore();
   }
 }
 export function supporter(
@@ -119,39 +137,43 @@ export function supporter(
   age: number,
   reduced: boolean,
   duration = 3.2,
+  scene = 0,
 ) {
-  const p = reduced ? 0.5 : Math.max(0, Math.min(1, age / duration));
-  const meet = Math.min(613, x + 34),
-    spawn = Math.min(631, x + 105);
-  const distance = p < 0.3 ? 1 - p / 0.3 : p > 0.72 ? (p - 0.72) / 0.28 : 0;
-  const donorX = meet + (spawn - meet) * distance;
+  const pose = encounterPose(scene, id, x, y, age, duration, reduced);
   c.save();
-  c.globalAlpha = p > 0.9 ? (1 - p) / 0.1 : 1;
+  clipEntrance(c, pose.portal);
   if (id % 4 === 1) {
-    c.strokeStyle = "#bad4cb";
-    c.lineWidth = 2;
-    for (const wx of [donorX - 13, donorX + 13]) {
+    c.strokeStyle = "#bed9d4";
+    c.lineWidth = 1;
+    for (const dx of [-13, 13]) {
       c.beginPath();
-      c.arc(wx, y - 4, 7, 0, Math.PI * 2);
+      c.arc(pose.x + dx, pose.y - 4, 7, 0, Math.PI * 2);
       c.stroke();
     }
-    c.strokeStyle = "#deaa69";
+    c.strokeStyle = "#dbac71";
     c.beginPath();
-    c.moveTo(donorX - 13, y - 4);
-    c.lineTo(donorX, y - 16);
-    c.lineTo(donorX + 13, y - 4);
-    c.lineTo(donorX - 13, y - 4);
+    c.moveTo(pose.x - 13, pose.y - 4);
+    c.lineTo(pose.x, pose.y - 16);
+    c.lineTo(pose.x + 13, pose.y - 4);
+    c.closePath();
     c.stroke();
   }
   actor(
     c,
-    donorX,
-    y - (id % 4 === 1 ? 6 : 0),
+    pose.x,
+    pose.y,
     reduced ? 0 : time,
     ["volunteer", "tinkerer", "hacker", "artist", "builder", "host"][id % 6],
-    distance > 0.05,
-    p >= 0.3 && p <= 0.72,
+    pose.walking,
+    pose.reaching,
+    1.4,
+    pose.facing,
   );
   c.restore();
-  return { x: donorX - 9, y: y - 24 };
+  return {
+    x: pose.x + pose.facing * 19,
+    y: pose.y - 29,
+    transfer: pose.transfer,
+    reaching: pose.reaching,
+  };
 }

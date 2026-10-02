@@ -5,6 +5,7 @@ import {
   configSchema,
   progression,
   recruitmentThreshold,
+  recruitmentReward,
   type StoryEvent,
 } from "../shared/model.ts";
 import { Store } from "../server/store.ts";
@@ -356,4 +357,17 @@ test("pending observations and active Express attempts survive database reopenin
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test("each recruit hands over the next configured accessory at its calculated midpoint", () => {
+  for (let i = 0; i < 6; i++) {
+    const mid = recruitmentThreshold(config, i),
+      reward = recruitmentReward(config, i);
+    if (reward) {
+      assert.ok(!progression(mid - 1, config).rewards.includes(reward));
+      assert.ok(progression(mid, config).rewards.includes(reward));
+    }
+  }
+  assert.equal(recruitmentReward(config, 5), null);
+  assert.equal(progression(config.goal, config).rewards.length, 5);
 });

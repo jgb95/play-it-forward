@@ -142,9 +142,13 @@ export function progression(total: number, c: Config) {
         : Math.max(0, Math.min(1, (total - start) / (end - start))),
     remaining: Math.max(0, end - total),
     vaultOpen: total >= c.goal,
-    rewards: c.chapters
-      .filter((x) => x.threshold <= total && x.reward)
-      .map((x) => x.reward!),
+    rewards: [
+      ...(c.chapters[0].reward ? [c.chapters[0].reward] : []),
+      ...c.chapters.flatMap((_, i) => {
+        const reward = recruitmentReward(c, i);
+        return reward && total >= recruitmentThreshold(c, i) ? [reward] : [];
+      }),
+    ],
     treasureTier:
       total < c.goal
         ? 0
@@ -188,6 +192,10 @@ export type Recruit = {
 };
 export function chapterRecruit(c: Config, index: number): Recruit {
   return c.chapters[index].recruit ?? defaultRecruits[index];
+}
+// Each recruit brings the next chapter's configured accessory. The host brings the crew home.
+export function recruitmentReward(c: Config, index: number) {
+  return c.chapters[index + 1]?.reward ?? null;
 }
 export function recruitmentThreshold(c: Config, index: number) {
   const start = c.chapters[index].threshold;

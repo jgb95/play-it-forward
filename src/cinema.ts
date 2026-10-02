@@ -18,6 +18,9 @@ export class CelebrationQueue {
     this.until = now + seconds;
     return this.pending.shift();
   }
+  get nextId() {
+    return this.pending[0]?.id ?? Infinity;
+  }
   get count() {
     return this.pending.length;
   }

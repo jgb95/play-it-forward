@@ -38,6 +38,12 @@ import {
   type PlaybackSession,
   type PlaybackControl,
 } from "./playback";
+import {
+  portalFor,
+  ExpressQueue,
+  type ExpressCue,
+  type Pickup,
+} from "./encounters";
 import { JourneyMotion, courierX } from "./motion";
 import "./style.css";
 const BASE = location.pathname.startsWith("/rehearsal") ? "/rehearsal" : "";
@@ -86,6 +92,7 @@ function useJourney() {
     [connected, setConnected] = useState(false),
     [error, setError] = useState(""),
     [events, setEvents] = useState<Celebration[]>([]),
+    [storyEvents, setStoryEvents] = useState<StoryEvent[]>([]),
     [restore, setRestore] = useState(0);
   useEffect(() => {
     let source: EventSource | undefined,
@@ -118,6 +125,7 @@ function useJourney() {
               p ? { ...p, state: JSON.parse((e as MessageEvent).data) } : p,
             );
             setEvents([]);
+            setStoryEvents([]);
             setRestore((v) => v + 1);
           });
           source.addEventListener("reset", (e) => {
@@ -125,14 +133,28 @@ function useJourney() {
               p ? { ...p, state: JSON.parse((e as MessageEvent).data) } : p,
             );
             setEvents([]);
+            setStoryEvents([]);
             setRestore((v) => v + 1);
           });
           source.addEventListener("acceleration", (e) => {
             const v = JSON.parse((e as MessageEvent).data);
+            setStoryEvents((p) =>
+              [
+                ...p,
+                {
+                  ...v.event,
+                  payload: {
+                    ...v.event.payload,
+                    pendingOutputs: v.state.onchain,
+                  },
+                },
+              ].slice(-300),
+            );
             setData((p) => (p ? { ...p, state: v.state } : p));
           });
           source.addEventListener("onchain", (e) => {
             const v = JSON.parse((e as MessageEvent).data);
+            setStoryEvents((p) => [...p, v.event].slice(-300));
             setData((p) => (p ? { ...p, state: v.state } : p));
           });
           source.addEventListener("donation", (e) => {
@@ -155,7 +177,7 @@ function useJourney() {
       source?.close();
     };
   }, []);
-  return { data, connected, error, events, restore };
+  return { data, connected, error, events, storyEvents, restore };
 }
 function ThemeToggle() {
   const [theme, setTheme] = useState(
@@ -239,6 +261,8 @@ function Header({
 function World({
   state,
   events,
+  storyEvents,
+  onExpress,
   reduced,
   config,
   restore,
@@ -255,6 +279,8 @@ function World({
 }: {
   state: State;
   events: Celebration[];
+  storyEvents: StoryEvent[];
+  onExpress: (cue: ExpressCue) => void;
   reduced: boolean;
   config: Config;
   restore: number;
@@ -266,13 +292,15 @@ function World({
   playbackControl: PlaybackControl;
   onDisplay: (state: State, mode: string, finished: boolean) => void;
   onStory: (message: string) => void;
-  onIntroComplete: (cutoff: number) => Promise<Celebration[]>;
+  onIntroComplete: (cutoff: number) => Promise<StoryEvent[]>;
   onReplayEvent: (event: StoryEvent | null) => void;
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
   const latest = useRef({
     state,
     events,
+    storyEvents,
+    onExpress,
     reduced,
     config,
     restore,
@@ -290,6 +318,8 @@ function World({
   latest.current = {
     state,
     events,
+    storyEvents,
+    onExpress,
     reduced,
     config,
     restore,
@@ -319,6 +349,7 @@ function World({
       restored = restore,
       skip = presentation.skip,
       tick = 0,
+      expressAcknowledged = 0,
       reportedChapter = -1,
       reportedPending = -1;
     let sessionId = "",
@@ -327,12 +358,15 @@ function World({
       sessionFinished = false,
       joiningLive = false,
       introRetry = 0,
-      tailEvents: Celebration[] = [];
+      tailEvents: StoryEvent[] = [];
     let previousCrew = new Set(state.crew),
       previousRewards = new Set(state.rewards),
       joins = new Map<string, number>(),
       trails: Trail[] = [];
-    let pickupUntil = 0;
+    let pickups: Pickup[] = [];
+    const expressQueue = new ExpressQueue();
+    expressQueue.restore(state.onchain ?? []);
+    let express: ExpressCue | undefined;
     let lastDisplay = -1,
       lastDisplayKey = "",
       storyUntil = 0;
@@ -361,13 +395,19 @@ function World({
     }
     function startPlayback(value: PlaybackSession, cfg: Config) {
       latest.current.onReplayEvent(null);
+      latest.current.onStory("");
+      storyUntil = 0;
       sessionId = value.id;
       time = 0;
       motionTime = 0;
       hold = 0;
       activeUntil = 0;
       tick = 0;
+      expressAcknowledged = 0;
       trails = [];
+      pickups = [];
+      express = undefined;
+      expressQueue.restore([]);
       joins.clear();
       previousCrew.clear();
       previousRewards.clear();
@@ -412,6 +452,9 @@ function World({
         previousCrew = new Set(s.crew);
         previousRewards = new Set(s.rewards);
         trails = [];
+        pickups = [];
+        express = undefined;
+        expressQueue.restore(s.onchain ?? []);
       }
       if (
         p?.kind === "intro" &&
@@ -452,6 +495,9 @@ function World({
         previousCrew = new Set(s.crew);
         previousRewards = new Set(s.rewards);
         joins.clear();
+        pickups = [];
+        express = undefined;
+        expressQueue.restore(s.onchain ?? []);
       }
       if (replaying) {
         restored = l.restore;
@@ -513,23 +559,55 @@ function World({
             });
         }
       } else {
-        const ready = !pose.walking && hold === 0 && time >= activeUntil;
+        const ready =
+          !pose.walking && hold === 0 && time >= activeUntil && !express;
         if (p?.kind === "replay" && reader) {
           mode = "replay";
           const event = reader.next(
             time,
-            ready && queue.count === 0,
+            ready && queue.count === 0 && !control.paused,
             l.presentation.cueSeconds,
           );
-          if (event) l.onReplayEvent(event);
+          if (event) {
+            l.onReplayEvent(event);
+            expressQueue.enqueue(event, reader.pending());
+          }
           if (event?.kind === "donation")
             queue.enqueue([{ id: event.id, ...event.payload }]);
           visual = { ...visual, onchain: reader.pending() };
-        } else
+        } else {
           queue.enqueue(
-            [...tailEvents, ...l.events].sort((a, b) => a.id - b.id),
+            [
+              ...tailEvents
+                .filter((e) => e.kind === "donation")
+                .map((e) => ({ id: e.id, ...e.payload })),
+              ...l.events,
+            ].sort((a, b) => a.id - b.id),
           );
-        const cue = queue.next(time, ready, l.presentation.cueSeconds);
+          for (const event of [...tailEvents, ...l.storyEvents])
+            expressQueue.enqueue(event, s.onchain ?? []);
+        }
+        if (express && time >= (express.born ?? 0) + (express.duration ?? 0))
+          express = undefined;
+        const expressCue = expressQueue.next(
+          ready && expressQueue.nextId < queue.nextId,
+          mode === "replay" ? reader!.pending() : (s.onchain ?? []),
+        );
+        if (expressCue) {
+          express = {
+            ...expressCue,
+            born: time,
+            duration: r ? 0.6 : Math.min(3.2, l.presentation.cueSeconds),
+          };
+          activeUntil = time + express.duration!;
+          expressAcknowledged++;
+          l.onExpress(expressCue);
+        }
+        const cue = queue.next(
+          time,
+          ready && !express && !(mode === "replay" && control.paused),
+          l.presentation.cueSeconds,
+        );
         if (cue) {
           visual = {
             ...visual,
@@ -538,22 +616,36 @@ function World({
             eventId: cue.id,
             count: visual.count + 1,
           };
-          const duration = Math.min(3.2, l.presentation.cueSeconds);
+          const startX = courierX(sceneIndex(cfg, pose.chapter), pose.progress);
+          const distance = Math.abs(
+            portalFor(sceneIndex(cfg, pose.chapter), cue.id).x - startX,
+          );
+          const duration = r
+            ? Math.min(3.2, l.presentation.cueSeconds)
+            : Math.max(
+                l.presentation.cueSeconds,
+                Math.min(8, 2 + distance / 110),
+              );
           trails.push({
             born: time,
             index: cue.id,
             amount: cue.amount,
-            milestone: cue.level > cue.previousLevel,
+            milestone:
+              cue.level > cue.previousLevel ||
+              progression(cue.total, cfg).crew.length >
+                progression(cue.total - cue.amount, cfg).crew.length,
             duration,
             visitor: true,
           });
           tick++;
           activeUntil = time + duration;
+          if (!r) hold = Math.max(hold, duration * 0.65);
           l.onCue(cue);
         }
         motion.setPace(l.presentation.pace === "cinematic");
         motion.update(visual, motionTime, r);
         pose = motion.sample(motionTime);
+        if (hold > 0) pose = { ...pose, walking: false };
         if (
           p?.kind === "replay" &&
           reader?.finished(time) &&
@@ -569,7 +661,7 @@ function World({
       const start = cfg.chapters[pose.chapter].threshold,
         end = cfg.chapters[pose.chapter + 1]?.threshold ?? cfg.goal;
       const shownTotal =
-        pose.chapter === visual.chapter && !pose.walking
+        pose.chapter === visual.chapter && !pose.walking && hold === 0
           ? visual.total
           : Math.round(start + (end - start) * pose.progress);
       const shown = {
@@ -592,25 +684,44 @@ function World({
         );
         storyUntil = time + 2.7;
         if (!r && mode !== "intro") hold = Math.max(hold, 0.35);
-      } else if (newRewards.length) {
-        pickupUntil = time + 1.4;
+      }
+      if (newRewards.length) {
+        pickups.push(
+          ...newRewards.map((reward, i) => ({
+            reward,
+            born:
+              time +
+              (newCrew.length && !r ? (mode === "intro" ? 0.35 : 2.1) : 0) +
+              i * 0.15,
+            duration: r ? 0.01 : mode === "intro" ? 0.8 : 2.6,
+            giver: cfg.chapters.findIndex((ch) => ch.reward === reward),
+          })),
+        );
         l.onStory(
-          "Collected: " +
+          (newCrew.length
+            ? cfg.chapters
+                .map((_, i) => chapterRecruit(cfg, i))
+                .filter((member) => newCrew.includes(member.id))
+                .map((member) => member.name + " joins the crew")
+                .join(" / ") + " · brings "
+            : "Received: ") +
             newRewards
               .map(
                 (x) =>
                   ({
-                    hat: "orange cap",
-                    sunglasses: "shades",
-                    shirt: "painted bitcoin++ shirt",
+                    hat: "Libre Relay cap",
+                    sunglasses: "blue-light glasses",
+                    shirt: "Bitcoin tee",
                     bag: "community satchel",
                     key: "hall key",
                   })[x] ?? x,
               )
               .join(" · "),
         );
-        storyUntil = time + 2.5;
-        if (!r && mode !== "intro") hold = Math.max(hold, 0.35);
+        storyUntil =
+          time + (mode === "intro" ? 1.2 : newCrew.length ? 4.7 : 2.5);
+        if (!r && mode !== "intro")
+          hold = Math.max(hold, newCrew.length ? 3.9 : 1.8);
       }
       previousCrew = new Set(shown.crew);
       previousRewards = new Set(shown.rewards);
@@ -644,13 +755,16 @@ function World({
       const members = cfg.chapters
         .map((_, i) => chapterRecruit(cfg, i))
         .filter((member) => shown.crew.includes(member.id));
+      pickups = pickups.filter((p) => time - p.born < p.duration);
       render(ctx, sceneBackground(shown), shown, time, trails, r, {
         x,
-        pickup: time < pickupUntil,
+        pickups,
+        express,
         walking: pose.walking,
         slide: pose.slide,
         crew: members,
         joins,
+        joinSeconds: mode === "intro" ? 0.35 : 2.1,
         waiting: shown.crew.includes(chapterRecruit(cfg, pose.chapter).id)
           ? undefined
           : chapterRecruit(cfg, pose.chapter),
@@ -677,6 +791,9 @@ function World({
       ref.current!.dataset.acknowledged = String(tick);
       ref.current!.dataset.activeTrails = String(trails.length);
       ref.current!.dataset.pending = String(queue.count);
+      ref.current!.dataset.express = String(!!express);
+      ref.current!.dataset.expressAcknowledged = String(expressAcknowledged);
+      ref.current!.dataset.pickups = String(pickups.length);
       ref.current!.dataset.crew = shown.crew.join(",");
       ref.current!.dataset.playback = mode;
       seen = Math.max(seen, s.eventId);
@@ -856,7 +973,12 @@ function ContributionActivity({
             </span>
             <div className="feed-content">
               <div className="feed-line">
-                <b>{row.name || "A kind contributor"}</b>
+                <b>
+                  {row.name ||
+                    (row.status === "pending"
+                      ? "Bitcoin contribution"
+                      : "Community contribution")}
+                </b>
                 <strong>
                   {sats(row.amount)} <small>sats</small>
                 </strong>
@@ -949,7 +1071,7 @@ function ContributionActivity({
   );
 }
 function Screen({ presenting = false }: { presenting?: boolean }) {
-  const { data, connected, error, events, restore } = useJourney();
+  const { data, connected, error, events, storyEvents, restore } = useJourney();
   const replayProjection = useRef(new ContributionFeed());
   const [replayRows, setReplayRows] = useState<FeedEntry[]>([]);
   const [session, setSession] = useState<PlaybackSession | null>(null),
@@ -1046,18 +1168,27 @@ function Screen({ presenting = false }: { presenting?: boolean }) {
       count: number;
       name: string;
       rewards: string[];
+      express?: boolean;
     } | null>(null);
   const [pending, setPending] = useState(0);
   const audio = useRef<AudioContext | null>(null);
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
     undefined,
   );
+  useEffect(() => {
+    setNotice(null);
+    clearTimeout(noticeTimer.current);
+    setStory("");
+  }, [session?.id]);
   function celebrate(event: Celebration) {
-    const earned =
-      data?.config.chapters
-        .filter((_, i) => i > event.previousLevel && i <= event.level)
-        .map((ch) => ch.reward)
-        .filter((reward) => reward !== null) ?? [];
+    const before = data
+      ? progression(event.total - event.amount, data.config).rewards
+      : [];
+    const earned = data
+      ? progression(event.total, data.config).rewards.filter(
+          (reward) => !before.includes(reward),
+        )
+      : [];
     setNotice({
       amount: event.amount,
       count: 1,
@@ -1171,6 +1302,21 @@ function Screen({ presenting = false }: { presenting?: boolean }) {
             <World
               state={data.state}
               events={events}
+              storyEvents={storyEvents}
+              onExpress={(cue) => {
+                setNotice({
+                  amount: cue.amount,
+                  count: 1,
+                  name: cue.name,
+                  rewards: [],
+                  express: true,
+                });
+                clearTimeout(noticeTimer.current);
+                noticeTimer.current = setTimeout(
+                  () => setNotice(null),
+                  (data.presentation.cueSeconds ?? 3.6) * 1000,
+                );
+              }}
               reduced={reduced}
               config={config}
               restore={restore}
@@ -1191,11 +1337,7 @@ function Screen({ presenting = false }: { presenting?: boolean }) {
                 else replayProjection.current.apply(event);
                 setReplayRows(replayProjection.current.rows());
               }}
-              onIntroComplete={async (cutoff) =>
-                (await history(cutoff)).events
-                  .filter((e) => e.kind === "donation")
-                  .map((e) => ({ ...e.payload, id: e.id }))
-              }
+              onIntroComplete={async (cutoff) => (await history(cutoff)).events}
             />
           )}
           <div className="scene-title">
@@ -1228,12 +1370,15 @@ function Screen({ presenting = false }: { presenting?: boolean }) {
             <div className="celebration" role="status">
               <span>✦</span>
               <div>
-                <b>+{sats(notice.amount)} sats</b>
+                <b>
+                  {notice.express ? "Express · " : "+"}
+                  {sats(notice.amount)} sats
+                </b>
                 <small>
                   {notice.count > 1
                     ? `${notice.count} contributions. One beautiful moment.`
                     : notice.name
-                      ? `Thank you, ${notice.name}.`
+                      ? notice.name
                       : "A little kindness just arrived."}
                 </small>
                 {!!notice.rewards.length && (
@@ -1244,7 +1389,7 @@ function Screen({ presenting = false }: { presenting?: boolean }) {
                         (reward) =>
                           ({
                             hat: "cap",
-                            sunglasses: "shades",
+                            sunglasses: "blue-light glasses",
                             shirt: "tee",
                             bag: "orange bag",
                             key: "hall key",
@@ -1694,7 +1839,7 @@ function Donate() {
             </p>
             <h2>
               {c.status === "paid"
-                ? "Thank you" + (c.name ? ", " + c.name : "") + "."
+                ? c.name || "Your contribution is confirmed."
                 : `${sats(c.amount)} sats`}
             </h2>
             {c.status === "paid" ? (
@@ -1837,13 +1982,13 @@ function Donate() {
               ))}
             </div>
             <label className="field-label" htmlFor="name">
-              Your name <span>optional</span>
+              Message <span>optional</span>
             </label>
             <input
               id="name"
               className="name-input"
               maxLength={32}
-              placeholder="A kind Berliner"
+              placeholder="Let’s build together!"
               value={name}
               onChange={(e) => setName(e.target.value)}
             />
@@ -2425,7 +2570,7 @@ function Admin() {
                   value={amount}
                   onChange={(e) => setAmount(Number(e.target.value))}
                 />
-                <label htmlFor="sim-name">Contributor name</label>
+                <label htmlFor="sim-name">Message</label>
                 <input
                   id="sim-name"
                   maxLength={32}

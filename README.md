@@ -2,7 +2,7 @@
 
 **A little kindness. A long way.** An open-source, self-hostable donation adventure for bitcoin++ Berlin, payments edition.
 
-A shared human courier explores six Berlin locations while contributions grow a real community bonus prize pool. Donations unlock orange accessories, ambient celebrations, and a hackathon hall. All progression is driven by **cumulative sats received**, never by the number of donations. Milestones do not spend or reserve funds.
+A shared human courier explores six Berlin locations while contributions grow a real community bonus prize pool. Donations unlock streetwear accessories, ambient celebrations, and a hackathon hall. All progression is driven by **cumulative sats received**, never by the number of donations. Milestones do not spend or reserve funds.
 
 ## Run the playable demo
 
@@ -29,15 +29,17 @@ For phone access over a LAN, bind the server with `HOST=0.0.0.0` and set `PUBLIC
 
 ## How it plays
 
-| Sats raised | Location | Reward |
-| ---: | --- | --- |
-| 0 | Berlin Hauptbahnhof | Basic satchel |
-| 50,000 | Spree | Orange hat |
-| 150,000 | Alexanderplatz | Sunglasses |
-| 350,000 | East Side Gallery | bitcoin++ shirt |
-| 700,000 | Brandenburg Gate | Orange bag |
-| 1,250,000 | Hackathon hall entrance | Hall key |
-| 2,000,000 | Vault opens | Shared treasure |
+| Sats raised | Location unlocked |
+| ---: | --- |
+| 0 | Berlin Hauptbahnhof |
+| 50,000 | Spree |
+| 150,000 | Alexanderplatz |
+| 350,000 | East Side Gallery |
+| 700,000 | Brandenburg Gate |
+| 1,250,000 | Hackathon hall entrance |
+| 2,000,000 | Hall opens |
+
+Each chapter recruits a companion at its calculated halfway point. That companion brings the next chapter's configured accessory: the volunteer brings the denim-blue cap, the tinkerer brings amber glasses, the hacker brings the black Bitcoin tee, the artist brings the orange bag, and the builder brings the hall key. The final host joins without an accessory and helps open the hall. Chapter boundaries remain travel milestones; accessory unlocks happen at recruitment, based only on confirmed sats.
 
 A donation gets its own light trail even when it crosses no milestone. Bursts play one named celebration at a time, with varied colored light trails and a short musical phrase when sound is enabled; accounting and the exact total update immediately. A large gift crosses intermediate scenes in a short montage and awards all earned accessories. The open hall continues to accumulate treasure in visual tiers based on sats, with an unlimited exact pool total up to JavaScript's safe integer limit.
 
@@ -93,7 +95,7 @@ MIT licensed original code and procedural art. Bundled DM Sans and IBM Plex Mono
 
 ### Presenting the adventure
 
-Open `/` for the overview and select **Present adventure** to open `/screen`. The presentation fills the viewport; its **Fullscreen** button enters browser fullscreen (Escape exits). Operator controls fade after inactivity and return on pointer movement or keyboard focus. The exact pool total, QR code, fund mode, and connection status stay visible.
+Open `/` for the overview and select **Present adventure** to open `/screen`. The presentation fills the viewport; its **Fullscreen** button enters browser fullscreen (Escape exits). Fullscreen removes all interactive controls; Escape restores the normal toolbar. The exact pool total, QR code, fund mode, and connection status stay visible.
 
 Dark mode is the default. The header theme button switches every page between light and dark and remembers the choice in this browser. Sound remains off by default. Motion respects the system reduced-motion preference and can also be switched off in the presentation footer.
 
@@ -155,3 +157,11 @@ The homepage has a primary **Donate sats** action (or **Watch replay** when cont
 On `/screen`, **Fullscreen** removes every interactive control; press **Escape** to restore the toolbar. The complete canvas fits the available space. Sound remains off by default. Historical replay reveals contributions in playback order, independently for each visitor.
 
 `GET /api/feed?run=<run-id>&before=<first-event-id>&cutoff=<event-id>&limit=50` returns a public display projection of the durable journal, newest first. Omit cursors to capture the latest snapshot; use its `eventKey`, `before`, and `cutoff` for stable older pages. `run=featured` selects the featured recorded run. The maximum page size is 100. Entries exclude contribution destinations, invoices, and private request details. This endpoint does not modify the ledger; existing SSE updates trigger activity refreshes.
+
+## Berlin art and expressive encounters
+
+The six locations use original Canvas pixel art informed by Berlin location photographs: [Hauptbahnhof](https://commons.wikimedia.org/wiki/File:Berlin_Hauptbahnhof_%28Berlin_Central_Station%29.jpg), [Museum Island and the Spree](https://www.visitberlin.de/en/museum-island-in-berlin), [Alexanderplatz](https://www.visitberlin.de/en/alexanderplatz), [East Side Gallery and Oberbaumbrücke](https://www.bbfc-cloud.de/public/locations/muehlenstrasse-east-side-gallery), [Brandenburg Gate](https://www.visitberlin.de/en/berlins-top-10-attractions), and [w3.hub](https://w3hub.vercel.app/). Reference photos are not bundled.
+
+Supporters enter and leave through scene doors, stairwells or paths. Recorded event IDs choose their routes and appearance; replay uses the same choices. Longer approaches receive additional walking time, capped at eight seconds per supporter encounter. New recruits visibly hand over accessories as they join; items equip at contact. Reduced motion uses stationary transfer poses.
+
+Checkout's optional **Message** is the same 32-character plain-text field as the earlier name field. API and journal compatibility retain the `name` key; the UI displays the text directly. Ordinary pending Bitcoin hides that text and has no gift effects. Provider-accepted Express reveals it and queues a Mempool Express train; pending outputs then orbit the courier's bag until confirmed. Only verified receipt credit advances the pool or journey. Reconnect restores waiting particles without replaying old trains. Live Express remains disabled pending contract checks and a user-paid test.

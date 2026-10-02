@@ -80,6 +80,9 @@ export class ContributionFeed {
       .filter((e) => e.firstId < before)
       .sort((a, b) => b.firstId - a.firstId)
       .slice(0, limit)
-      .map((e) => ({ ...e }));
+      .map((e) => ({
+        ...e,
+        name: e.status === "confirmed" || e.express ? e.name : "",
+      }));
   }
 }
