@@ -60,3 +60,11 @@ location / {
 ```
 
 Back up the site config first, run `nginx -t`, then reload nginx. Check HTTPS, SSE, and the rehearsal QR. Bark must remain bound to `127.0.0.1:3001`, with authentication enabled.
+
+## Verified release environment
+
+The cinematic release was deployed behind existing nginx/Certbot on Debian 11 x86_64 with official Node 24.21.0 (download checksum verified) and Bark 0.7.1. If another app occupies port 3000, set `PORT` to a free localhost port and update only this site's nginx proxy. The runtime may be installed in a dedicated `/opt` directory; match the service's absolute Node path.
+
+Mainnet Lightning settlement was verified with one 5,000-sat receipt, with no duplicate credit after restart and repeated reconciliation. Real Bitcoin and Ark settlement and Bitcoin reorg recovery are not verified by that test. Back up the full wallet state after funded testing, alongside an online ledger snapshot. A private test instance must be stopped before starting the public process against the same live ledger.
+
+If the provider's DNS resolver returns SERVFAIL for Second's addresses, test an alternative resolver first. A systemd `BindReadOnlyPaths` override can supply a dedicated `resolv.conf` to Bark without changing host-wide DNS. Preserve HTTPS certificate validation and the official service hostnames.

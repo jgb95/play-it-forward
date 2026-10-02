@@ -87,7 +87,7 @@ For manual UI checks, open the screen and mobile page together; send a 1,000-sat
 
 ## Current limits
 
-This is a hackathon prototype, with a working simulated game and a Bark receive adapter. Funded signet settlement, a small real-sats smoke test, VPS deployment, and the physical phone QR scan are operator checks before collecting public money. A one-confirmation Bitcoin credit is treated as durable; automatic reorg reversals are not implemented. No spending, refund, payout, Cashu, voting, or acceleration UI is included.
+This is a hackathon prototype, with a working simulated game and a Bark receive adapter. Lightning settlement was verified with a 5,000-sat Phoenix payment on a Linux VPS, including restart and duplicate reconciliation checks. Bitcoin and Ark receiving APIs were checked on mainnet without funded settlement; funded signet coverage and the physical venue QR scan remain operator checks. A one-confirmation Bitcoin credit is treated as durable; automatic reorg reversals are not implemented. No spending, refund, payout, Cashu, voting, or acceleration UI is included.
 
 MIT licensed original code and procedural art. Bundled DM Sans and IBM Plex Mono fonts retain their upstream SIL Open Font License. bitcoin++ branding remains the event's branding.
 
