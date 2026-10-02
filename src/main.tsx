@@ -1806,9 +1806,7 @@ function RunAndWalletControls({
             />
             <button
               className="secondary"
-              disabled={
-                busy || !destination || health.state.eventMode !== "archive"
-              }
+              disabled={busy || !destination}
               onClick={() =>
                 void action(async () => {
                   const quote = await api<any>("/admin/withdrawals/preview", {
@@ -1821,6 +1819,12 @@ function RunAndWalletControls({
             >
               Review entire withdrawal
             </button>
+            {!destination && (
+              <p>
+                Enter your receiving Bitcoin address to review the balance and
+                fees.
+              </p>
+            )}
             {review && (
               <div className="withdraw-review">
                 <h3>Review before sending</h3>
@@ -1839,6 +1843,12 @@ function RunAndWalletControls({
                   backup is saved before sending. Keep your wallet backup
                   secure.
                 </p>
+                {health.state.eventMode !== "archive" && (
+                  <p role="status">
+                    You can review fees while live. Close contributions in Event
+                    status before sending, then refresh this review.
+                  </p>
+                )}
                 <label htmlFor="withdraw-confirm">
                   Type SEND to confirm this transfer
                 </label>
@@ -1852,6 +1862,7 @@ function RunAndWalletControls({
                   className="primary"
                   disabled={
                     busy ||
+                    health.state.eventMode !== "archive" ||
                     confirm !== "SEND" ||
                     review.clientExpires < Date.now()
                   }

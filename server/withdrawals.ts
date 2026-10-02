@@ -139,8 +139,6 @@ export class Withdrawals {
       throw Error(
         "An earlier withdrawal needs wallet inspection before preparing another transfer",
       );
-    if (this.store.eventMode() !== "archive")
-      throw Error("Close contributions with Event archive before withdrawing");
     const q = await this.estimate(kind, destination);
     if (this.blocked()) throw Error("A withdrawal is already being submitted");
     const p = {

@@ -125,7 +125,9 @@ test("stale quotes, balance changes, network mismatch and open checkout reject b
     f.w.save(expired);
     await assert.rejects(f.w.send(expired.id), /expired/);
     f.s.setEventMode("live");
-    await assert.rejects(f.w.preview("ark", dest), /Close/);
+    const liveReview = await f.w.preview("all", dest);
+    assert.equal(liveReview.gross, 20000);
+    await assert.rejects(f.w.send(liveReview.id), /Close/);
     assert.equal(f.sends(), 0);
   } finally {
     f.s.close();
