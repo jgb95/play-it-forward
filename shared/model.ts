@@ -17,7 +17,26 @@ export const configSchema = z
             "gallery",
             "gate",
             "vault",
+            "hall",
           ]),
+          recruit: z
+            .object({
+              id: z
+                .string()
+                .regex(/^[a-z0-9-]+$/)
+                .max(32),
+              name: z.string().min(1).max(32),
+              role: z.string().min(1).max(60),
+              sprite: z.enum([
+                "volunteer",
+                "tinkerer",
+                "hacker",
+                "artist",
+                "builder",
+                "host",
+              ]),
+            })
+            .optional(),
           name: z.string(),
           subtitle: z.string(),
           threshold: z.number().int().nonnegative().safe(),
@@ -28,8 +47,22 @@ export const configSchema = z
       )
       .length(6),
     goal: z.number().int().positive().safe(),
+    contributionPresets: z
+      .array(z.number().int().positive().safe().max(1000000000))
+      .min(1)
+      .max(6)
+      .optional(),
   })
   .superRefine((c, ctx) => {
+    const ids = c.chapters.map(
+      (ch, i) =>
+        ch.recruit?.id ?? ["leni", "bo", "mira", "jules", "ada", "oskar"][i],
+    );
+    if (new Set(ids).size !== ids.length)
+      ctx.addIssue({
+        code: "custom",
+        message: "Companion identities must be unique",
+      });
     if (
       c.chapters[0].threshold !== 0 ||
       c.chapters.some(
@@ -55,11 +88,17 @@ export type Contribution = {
   created: number;
   status: "pending" | "paid" | "expired";
   received: number;
+  onchain?: Observation[];
+  acceleration?: AccelerationAttempt;
 };
 export type Receipt = { key: string; requestId: string; amount: number };
 export type State = {
   total: number;
   count: number;
+  crew: string[];
+  eventMode?: "live" | "archive";
+  eventKey?: string;
+  onchain?: Observation[];
   level: number;
   chapter: number;
   progress: number;
@@ -77,6 +116,8 @@ export type Celebration = {
   level: number;
   previousLevel: number;
   total: number;
+  method?: Method;
+  requestId?: string;
 };
 export function progression(total: number, c: Config) {
   const level =
@@ -88,6 +129,13 @@ export function progression(total: number, c: Config) {
   return {
     level,
     chapter,
+    crew: c.chapters
+      .map((_, i) => ({
+        recruit: chapterRecruit(c, i),
+        threshold: recruitmentThreshold(c, i),
+      }))
+      .filter((x) => total >= x.threshold)
+      .map((x) => x.recruit.id),
     progress:
       total >= c.goal
         ? 1
@@ -100,7 +148,11 @@ export function progression(total: number, c: Config) {
     treasureTier:
       total < c.goal
         ? 0
-        : Math.min(12, 1 + Math.floor((total - c.goal) / 250000)),
+        : Math.min(
+            12,
+            1 +
+              Math.floor((total - c.goal) / Math.max(1, Math.ceil(c.goal / 8))),
+          ),
   };
 }
 export const contributionSchema = z.object({
@@ -114,3 +166,86 @@ export const contributionSchema = z.object({
   method: methodSchema,
 });
 export const sats = (n: number) => n.toLocaleString("en-US");
+
+export const defaultRecruits = [
+  {
+    id: "leni",
+    name: "Leni",
+    role: "Welcoming volunteer",
+    sprite: "volunteer",
+  },
+  { id: "bo", name: "Bo", role: "Bicycle tinkerer", sprite: "tinkerer" },
+  { id: "mira", name: "Mira", role: "Signal hacker", sprite: "hacker" },
+  { id: "jules", name: "Jules", role: "Mural artist", sprite: "artist" },
+  { id: "ada", name: "Ada", role: "Community builder", sprite: "builder" },
+  { id: "oskar", name: "Oskar", role: "Event host", sprite: "host" },
+] as const;
+export type Recruit = {
+  id: string;
+  name: string;
+  role: string;
+  sprite: string;
+};
+export function chapterRecruit(c: Config, index: number): Recruit {
+  return c.chapters[index].recruit ?? defaultRecruits[index];
+}
+export function recruitmentThreshold(c: Config, index: number) {
+  const start = c.chapters[index].threshold;
+  return (
+    start +
+    Math.ceil(((c.chapters[index + 1]?.threshold ?? c.goal) - start) / 2)
+  );
+}
+export function giftPresets(c: Config) {
+  return (
+    c.contributionPresets ?? [
+      ...new Set(
+        [2000, 400, 200, 40].map((divisor) =>
+          Math.max(1, Math.min(1000000000, Math.round(c.goal / divisor))),
+        ),
+      ),
+    ]
+  );
+}
+export type Observation = {
+  key: string;
+  requestId: string;
+  txid: string;
+  amount: number;
+  name: string;
+  status: "pending" | "confirmed" | "replaced" | "dropped";
+  replacement?: string;
+  acceleration?: "accepted" | "failed";
+};
+export type AccelerationQuote = {
+  id: string;
+  requestId: string;
+  txid: string;
+  totalSats: number;
+  boostSats: number;
+  serviceSats: number;
+  expires: number;
+};
+export type AccelerationAttempt = {
+  txid: string;
+  invoiceId: string;
+  invoice: string;
+  totalSats: number;
+  expires: number;
+  status: "invoice" | "accepted" | "failed" | "confirmed";
+};
+export type StoryEvent = {
+  id: number;
+  kind: "donation" | "onchain" | "acceleration" | "reset";
+  created: number;
+  payload: any;
+};
+export type HistoryPage = {
+  config: Config;
+  eventKey: string;
+  events: StoryEvent[];
+  cutoff: number;
+  after: number;
+  more: boolean;
+  finalTotal: number;
+};

@@ -1,12 +1,26 @@
 import express from "express";
-import { randomBytes, timingSafeEqual, createHash } from "node:crypto";
+import {
+  randomUUID,
+  randomBytes,
+  timingSafeEqual,
+  createHash,
+} from "node:crypto";
 import { resolve } from "node:path";
-import type { Config } from "../shared/model.ts";
+import type {
+  Config,
+  Observation,
+  AccelerationAttempt,
+} from "../shared/model.ts";
 import { contributionSchema } from "../shared/model.ts";
 import {
   defaultPresentation,
   presentationSchema,
 } from "../shared/presentation.ts";
+import {
+  MempoolAccelerator,
+  SimulatedAccelerator,
+  type Accelerator,
+} from "./acceleration.ts";
 import { MovieDirector } from "./movie.ts";
 import { Store } from "./store.ts";
 import type { PaymentAdapter } from "./payments.ts";
@@ -19,6 +33,8 @@ export function createApp(
     reconcileMs?: number;
     rehearsal?: express.Express;
     cookiePath?: string;
+    accelerator?: Accelerator;
+    accelerationEnabled?: boolean;
   } = {},
 ) {
   const app = express();
@@ -69,6 +85,70 @@ export function createApp(
   let presentation = { ...defaultPresentation };
   const movie = new MovieDirector();
   const state = () => store.state();
+  const accelerator =
+    options.accelerator ??
+    (store.mode === "demo"
+      ? new SimulatedAccelerator(store.config.goal)
+      : new MempoolAccelerator());
+  const accelerationEnabled =
+    store.mode === "demo" || options.accelerationEnabled === true;
+  const invoiceLocks = new Set<string>();
+  let accelerationError: string | null = null;
+  const publishStory = (event: ReturnType<Store["journal"]> | null) => {
+    if (event)
+      broadcast(
+        event.kind === "acceleration" ? "acceleration" : "onchain",
+        { event, state: state() },
+        event.id,
+      );
+  };
+  function observe(value: Observation) {
+    publishStory(store.observe(value));
+  }
+  function attempt(value: AccelerationAttempt) {
+    publishStory(store.setAttempt(value));
+  }
+  function attributable(requestId: string, txid: string) {
+    const output = store
+      .observations()
+      .find(
+        (x) =>
+          x.requestId === requestId &&
+          x.txid === txid &&
+          x.status === "pending",
+      );
+    if (!output)
+      throw Error("No verified pending output for this contribution");
+    return output;
+  }
+  async function prepareInvoice(requestId: string, quoteId: string) {
+    const q = store.getQuote(quoteId);
+    if (!q || q.requestId !== requestId || q.expires <= Date.now())
+      throw Error("Express quote expired; request a new quote");
+    attributable(requestId, q.txid);
+    if (invoiceLocks.has(q.txid))
+      throw Error("Express invoice is being prepared; please retry");
+    invoiceLocks.add(q.txid);
+    try {
+      const existing = store.attempt(q.txid);
+      if (existing?.status === "accepted" || existing?.status === "confirmed")
+        throw Error("This transaction already has Express delivery");
+      if (existing?.status === "invoice" && existing.expires > Date.now()) {
+        if (existing.totalSats !== q.totalSats)
+          throw Error(
+            "An active invoice has a different price; wait for it to expire",
+          );
+        return existing;
+      }
+      const value = await accelerator.invoice(q);
+      attributable(requestId, q.txid); // It may have confirmed while the provider was responding.
+      attempt(value);
+      return value;
+    } finally {
+      invoiceLocks.delete(q.txid);
+    }
+  }
+
   const send = (
     res: express.Response,
     event: string,
@@ -96,7 +176,39 @@ export function createApp(
     try {
       const identity = await adapter.health?.();
       if (identity) store.bindWallet(identity);
-      for (const r of await adapter.reconcile(store.all())) credit(r);
+      const requests = store.all();
+      if (adapter.inspect)
+        for (const output of await adapter.inspect(requests)) {
+          const a = store.attempt(output.txid);
+          observe({
+            ...output,
+            ...(a?.status === "accepted"
+              ? { acceleration: "accepted" as const }
+              : {}),
+            ...(a?.status === "failed"
+              ? { acceleration: "failed" as const }
+              : {}),
+          });
+          if (output.status === "confirmed" && a && a.status !== "confirmed")
+            attempt({ ...a, status: "confirmed" });
+        }
+      for (const r of await adapter.reconcile(requests)) credit(r);
+      if (accelerationEnabled)
+        for (const a of store.attempts()) {
+          if (!["invoice", "accepted"].includes(a.status)) continue;
+          try {
+            const status = await accelerator.status(a);
+            attempt({ ...a, status });
+            if (status === "accepted" || status === "failed")
+              for (const o of store
+                .observations()
+                .filter((o) => o.txid === a.txid && o.status === "pending"))
+                observe({ ...o, acceleration: status });
+            accelerationError = null;
+          } catch (e) {
+            accelerationError = (e as Error).message;
+          }
+        }
       lastSync = Date.now();
       syncError = null;
     } catch (e) {
@@ -107,8 +219,28 @@ export function createApp(
     }
   }
   app.get("/api/state", (_req, res) =>
-    res.json({ config: store.config, state: state(), presentation }),
+    res.json({
+      config: store.config,
+      state: state(),
+      presentation,
+      accelerationEnabled,
+    }),
   );
+  app.get("/api/history", (req, res) => {
+    const after = Number(req.query.after ?? 0),
+      cutoff = Number(req.query.cutoff ?? state().eventId);
+    if (
+      !Number.isSafeInteger(after) ||
+      after < 0 ||
+      !Number.isSafeInteger(cutoff) ||
+      cutoff < 0 ||
+      cutoff > state().eventId
+    ) {
+      res.status(400).json({ error: "Invalid history cursor" });
+      return;
+    }
+    res.json(store.history(after, cutoff));
+  });
   app.get("/api/events", (req, res) => {
     if (clients.size >= 150) {
       res.status(503).end();
@@ -148,6 +280,12 @@ export function createApp(
   });
   app.post("/api/contributions", async (req, res, next) => {
     try {
+      if (store.eventMode() === "archive") {
+        res
+          .status(409)
+          .json({ error: "The event has ended. Enjoy the community replay." });
+        return;
+      }
       const parsed = contributionSchema.safeParse(req.body);
       if (!parsed.success) {
         res.status(400).json({
@@ -181,6 +319,43 @@ export function createApp(
     }
     res.json(c);
   });
+  app.post(
+    "/api/contributions/:id/acceleration/quote",
+    async (req, res, next) => {
+      try {
+        if (!accelerationEnabled) {
+          res.status(503).json({
+            error:
+              "Live Express is awaiting its integration check. Your payment confirms normally.",
+          });
+          return;
+        }
+        const txid = String(req.body.txid ?? "");
+        attributable(req.params.id, txid);
+        const q = await accelerator.quote(txid, req.params.id);
+        store.quote(q);
+        res.json(q);
+      } catch (e) {
+        next(e);
+      }
+    },
+  );
+  app.post(
+    "/api/contributions/:id/acceleration/invoice",
+    async (req, res, next) => {
+      try {
+        if (!accelerationEnabled) {
+          res.status(503).json({ error: "Live Express is not enabled" });
+          return;
+        }
+        res.json(
+          await prepareInvoice(req.params.id, String(req.body.quoteId ?? "")),
+        );
+      } catch (e) {
+        next(e);
+      }
+    },
+  );
   app.post("/api/contributions/:id/simulate", (req, res) => {
     if (store.mode !== "demo") {
       res
@@ -228,6 +403,8 @@ export function createApp(
   app.get("/api/admin/health", (_req, res) =>
     res.json({
       mode: store.mode,
+      accelerationEnabled,
+      accelerationError,
       lastSync,
       syncError,
       screenConnections: clients.size,
@@ -237,6 +414,101 @@ export function createApp(
       liveReady: store.mode === "mainnet" && !syncError && lastSync !== null,
     }),
   );
+  app.post("/api/admin/event-mode", (req, res) => {
+    if (!["live", "archive"].includes(req.body.mode)) {
+      res.status(400).json({ error: "Choose live or archive" });
+      return;
+    }
+    store.setEventMode(req.body.mode);
+    broadcast("snapshot", state(), state().eventId);
+    res.json(state());
+  });
+  async function demoDetection(amount: number, name: string) {
+    const parsed = contributionSchema.parse({
+      amount,
+      name,
+      method: "bitcoin",
+    });
+    const c = await adapter.create(parsed.amount, parsed.name, "bitcoin");
+    store.add(c);
+    const txid = randomBytes(32).toString("hex");
+    const o: Observation = {
+      key: `bitcoin:${txid}:0`,
+      txid,
+      requestId: c.id,
+      amount: c.amount,
+      name: c.name,
+      status: "pending",
+    };
+    observe(o);
+    return o;
+  }
+  async function demoAction(action: string, key: string) {
+    const o = store.observations().find((x) => x.key === key);
+    if (!o) throw Error("Unknown rehearsal output");
+    if (action === "confirm") {
+      if (o.status === "replaced" || o.status === "dropped")
+        throw Error("This output is no longer active");
+      observe({ ...o, status: "confirmed" });
+      const a = store.attempt(o.txid);
+      if (a) attempt({ ...a, status: "confirmed" });
+      credit({ key: o.key, requestId: o.requestId, amount: o.amount });
+    } else if (action === "quote") {
+      if (o.status !== "pending")
+        throw Error("Only pending outputs can use Express");
+      const q = await accelerator.quote(o.txid, o.requestId);
+      store.quote(q);
+      return q;
+    } else if (action === "invoice") {
+      const q = await accelerator.quote(o.txid, o.requestId);
+      store.quote(q);
+      return prepareInvoice(o.requestId, q.id);
+    } else if (action === "accept" || action === "fail") {
+      if (o.status !== "pending")
+        throw Error("Only pending outputs can use Express");
+      const a = store.attempt(o.txid);
+      if (!a) throw Error("Create an Express invoice first");
+      const status = action === "accept" ? "accepted" : "failed";
+      attempt({ ...a, status });
+      observe({ ...o, acceleration: status });
+    } else if (action === "replace") {
+      if (o.status !== "pending")
+        throw Error("Only pending outputs can be replaced");
+      const txid = randomBytes(32).toString("hex");
+      observe({ ...o, status: "replaced", replacement: txid });
+      observe({
+        ...o,
+        key: `bitcoin:${txid}:0`,
+        txid,
+        acceleration: undefined,
+      });
+    } else if (action === "drop") {
+      if (o.status !== "pending")
+        throw Error("Only pending outputs can be dropped");
+      observe({ ...o, status: "dropped" });
+    } else throw Error("Unknown rehearsal action");
+    return store.get(o.requestId);
+  }
+  app.post("/api/admin/onchain", async (req, res, next) => {
+    try {
+      if (store.mode !== "demo") {
+        res
+          .status(403)
+          .json({ error: "Rehearsal only; live receipts cannot be simulated" });
+        return;
+      }
+      res.json(
+        req.body.action === "detect"
+          ? await demoDetection(
+              req.body.amount,
+              req.body.name ?? "Berlin supporter",
+            )
+          : await demoAction(req.body.action, req.body.key),
+      );
+    } catch (e) {
+      next(e);
+    }
+  });
   app.post("/api/admin/logout", (req, res) => {
     const token = req
       .get("cookie")
@@ -256,6 +528,7 @@ export function createApp(
       return;
     }
     movie.stop();
+    stagedMovie = undefined;
     store.reset();
     broadcast("reset", state(), state().eventId);
     res.json(state());
@@ -309,11 +582,9 @@ export function createApp(
   });
   app.post("/api/admin/movie", (req, res) => {
     if (store.mode !== "demo") {
-      res
-        .status(403)
-        .json({
-          error: "Movie simulation is only available in rehearsal/demo",
-        });
+      res.status(403).json({
+        error: "Movie simulation is only available in rehearsal/demo",
+      });
       return;
     }
     const now = Date.now();
@@ -332,6 +603,7 @@ export function createApp(
           break;
         case "stop":
           movie.stop();
+          stagedMovie = undefined;
           break;
         default:
           res.status(400).json({ error: "Unknown movie action" });
@@ -342,20 +614,72 @@ export function createApp(
       res.status(400).json({ error: (e as Error).message });
     }
   });
+  let stagedMovie:
+    | {
+        index: number;
+        observation: Observation;
+        express: boolean;
+        stage: number;
+      }
+    | undefined;
   let movieTicking = false;
   const movieTimer = setInterval(async () => {
     if (movieTicking || store.mode !== "demo") return;
     movieTicking = true;
     try {
+      const preview = movie.preview(Date.now(), state().total);
+      if (
+        preview &&
+        preview.amount > 0 &&
+        preview.method === "bitcoin" &&
+        preview.remaining <= Math.min(1500, preview.interval * 0.7)
+      ) {
+        if (!stagedMovie || stagedMovie.index !== preview.index)
+          stagedMovie = {
+            index: preview.index,
+            observation: await demoDetection(
+              preview.amount,
+              "A friend on the Mempool platform",
+            ),
+            express: preview.express,
+            stage: 0,
+          };
+        if (
+          stagedMovie.express &&
+          stagedMovie.stage === 0 &&
+          preview.remaining <= preview.interval * 0.4
+        ) {
+          await demoAction("invoice", stagedMovie.observation.key);
+          stagedMovie.stage = 1;
+        }
+        if (
+          stagedMovie.express &&
+          stagedMovie.stage === 1 &&
+          preview.remaining <= preview.interval * 0.2
+        ) {
+          await demoAction("accept", stagedMovie.observation.key);
+          stagedMovie.stage = 2;
+        }
+      }
+      const method = preview?.method ?? "lightning";
       const amount = movie.due(Date.now(), state().total);
       if (amount > 0) {
-        const c = await adapter.create(
-          amount,
-          "Berlin movie crew",
-          "lightning",
-        );
-        store.add(c);
-        credit({ key: "demo:" + c.id, requestId: c.id, amount: c.amount });
+        if (stagedMovie && method === "bitcoin") {
+          if (stagedMovie.observation.amount !== amount) {
+            // A manual gift changed the target during staging.
+            await demoAction("drop", stagedMovie.observation.key);
+            const replacement = await demoDetection(
+              amount,
+              "Berlin movie crew",
+            );
+            await demoAction("confirm", replacement.key);
+          } else await demoAction("confirm", stagedMovie.observation.key);
+          stagedMovie = undefined;
+        } else {
+          const c = await adapter.create(amount, "Berlin movie crew", method);
+          store.add(c);
+          credit({ key: "demo:" + c.id, requestId: c.id, amount: c.amount });
+        }
       }
     } catch {
       movie.stop();

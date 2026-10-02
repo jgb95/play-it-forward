@@ -1,3 +1,4 @@
+import { recruitmentThreshold } from "../shared/model";
 import type { Config } from "../shared/model";
 export class MovieDirector {
   private started = 0;
@@ -20,7 +21,12 @@ export class MovieDirector {
     this.running = true;
     const stops = [
       total,
-      ...config.chapters.map((c) => c.threshold).filter((t) => t > total),
+      ...[
+        ...config.chapters.map((c) => c.threshold),
+        ...config.chapters.map((_, i) => recruitmentThreshold(config, i)),
+      ]
+        .filter((t) => t > total)
+        .sort((a, b) => a - b),
       config.goal,
     ];
     const steps = Math.max(
@@ -62,6 +68,27 @@ export class MovieDirector {
       remaining: this.running ? Math.max(0, this.duration - elapsed) : 0,
       gifts: this.index,
       planned: this.points.length,
+    };
+  }
+  preview(now: number, total: number) {
+    if (
+      !this.running ||
+      this.pausedAt !== null ||
+      this.index >= this.points.length
+    )
+      return undefined;
+    const interval = (this.duration * 1000) / this.points.length;
+    const remaining =
+      interval * (this.index + 1) - (now - this.started - this.pausedMs);
+    return {
+      index: this.index,
+      amount: Math.max(0, this.points[this.index] - total),
+      method: (["lightning", "ark", "bitcoin", "bitcoin"] as const)[
+        this.index % 4
+      ],
+      express: this.index % 4 === 3,
+      remaining,
+      interval,
     };
   }
   due(now: number, total: number): number {

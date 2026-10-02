@@ -181,3 +181,52 @@ test("wrong-network wallet health fails before a payment request can be issued",
     /network does not match/,
   );
 });
+
+test("pending actual outputs are independent, replacements need a competing spend, outages preserve pending", async () => {
+  const p = payments.p2wpkh({
+    hash: Buffer.alloc(20, 4),
+    network: networks.testnet,
+  });
+  const tx = new Transaction();
+  tx.addInput(Buffer.alloc(32, 6), 1);
+  tx.addOutput(p.output!, 13n);
+  tx.addOutput(p.output!, 17n);
+  const data = {
+    "/onchain/transactions": [
+      { txid: tx.getId(), tx: tx.toHex(), confirmation: null },
+    ],
+  };
+  const offline = new BarkAdapter(
+    "http://127.0.0.1:3001",
+    "secret",
+    "signet",
+    mock(data),
+    (async () => {
+      throw Error("offline");
+    }) as typeof fetch,
+  );
+  assert.deepEqual(
+    (await offline.inspect([c("bitcoin", p.address!)])).map((o) => o.status),
+    ["pending", "pending"],
+  );
+  const replacement = "a".repeat(64);
+  const replacing = new BarkAdapter(
+    "http://127.0.0.1:3001",
+    "secret",
+    "signet",
+    mock(data),
+    (async () =>
+      new Response(
+        JSON.stringify({
+          spent: true,
+          txid: replacement,
+          status: { confirmed: false },
+        }),
+      )) as typeof fetch,
+  );
+  const observations = await replacing.inspect([c("bitcoin", p.address!)]);
+  assert.equal(observations.length, 2);
+  assert.equal(observations[0].status, "replaced");
+  assert.equal(observations[0].replacement, replacement);
+  assert.notEqual(observations[0].key, observations[1].key);
+});

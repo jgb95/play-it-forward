@@ -1,11 +1,17 @@
 import { randomUUID } from "node:crypto";
 import { address, Transaction, networks } from "bitcoinjs-lib";
 import bolt11 from "bolt11";
-import type { Contribution, Method, Receipt } from "../shared/model.ts";
+import type {
+  Contribution,
+  Method,
+  Receipt,
+  Observation,
+} from "../shared/model.ts";
 export interface PaymentAdapter {
   health?(): Promise<string>;
   create(amount: number, name: string, method: Method): Promise<Contribution>;
   reconcile(requests: Contribution[]): Promise<Receipt[]>;
+  inspect?(requests: Contribution[]): Promise<Observation[]>;
 }
 export class SimulationAdapter implements PaymentAdapter {
   async create(
@@ -48,6 +54,7 @@ type WalletTx = {
 export const BARK_VERSION = "0.7.1";
 export class BarkAdapter implements PaymentAdapter {
   private versionChecked = false;
+  private replacements = new Map<string, { checked: number; txid?: string }>();
   async health() {
     if (!this.versionChecked) {
       const r = await this.request(this.base + "/api-docs/openapi.json", {
@@ -73,6 +80,7 @@ export class BarkAdapter implements PaymentAdapter {
     private token: string,
     public network: "signet" | "mainnet",
     private request: typeof fetch = fetch,
+    private chainRequest?: typeof fetch,
   ) {
     const u = new URL(base);
     if (!["localhost", "127.0.0.1", "[::1]"].includes(u.hostname))
@@ -147,6 +155,103 @@ export class BarkAdapter implements PaymentAdapter {
       received: 0,
       status: "pending" as const,
     };
+  }
+  async inspect(requests: Contribution[]): Promise<Observation[]> {
+    const bitcoin = requests.filter((c) => c.method === "bitcoin");
+    if (!bitcoin.length) return [];
+    const transactions = await this.api<WalletTx[]>("/onchain/transactions");
+    const parsed = transactions.map((t) => ({
+      ...t,
+      decoded: Transaction.fromHex(t.tx),
+    }));
+    const observations: Observation[] = [];
+    for (const tx of parsed) {
+      if (tx.decoded.getId() !== tx.txid)
+        throw Error("Bark transaction identity mismatch");
+      let replacement: string | undefined;
+      const conflict = parsed.find(
+        (other) =>
+          other.txid !== tx.txid &&
+          other.confirmation &&
+          other.decoded.ins.some((input) =>
+            tx.decoded.ins.some(
+              (old) =>
+                input.index === old.index &&
+                Buffer.from(input.hash).equals(old.hash),
+            ),
+          ),
+      );
+      // An actual competing spend proves replacement. Missing data or HTTP failures never mean dropped.
+      const cached = this.replacements.get(tx.txid);
+      if (cached) replacement = cached.txid;
+      if (
+        !tx.confirmation &&
+        this.chainRequest &&
+        (!cached || Date.now() - cached.checked >= 60000)
+      ) {
+        for (const input of tx.decoded.ins.slice(0, 8)) {
+          const previous = Buffer.from(input.hash).reverse().toString("hex");
+          try {
+            const base =
+              this.network === "mainnet"
+                ? "https://mempool.space/api"
+                : "https://mempool.space/signet/api";
+            const response = await this.chainRequest(
+              `${base}/tx/${previous}/outspend/${input.index}`,
+              { signal: AbortSignal.timeout(3000) },
+            );
+            if (response.ok) {
+              const spend = await response.json();
+              if (
+                spend.spent &&
+                typeof spend.txid === "string" &&
+                /^[a-f0-9]{64}$/.test(spend.txid) &&
+                spend.txid !== tx.txid
+              ) {
+                replacement = spend.txid;
+                break;
+              }
+            }
+          } catch {} // Preserve the last observation during provider outages.
+        }
+      }
+      if (
+        this.chainRequest &&
+        !tx.confirmation &&
+        (!cached || Date.now() - cached.checked >= 60000)
+      )
+        this.replacements.set(tx.txid, {
+          checked: Date.now(),
+          txid: replacement,
+        });
+      for (const c of bitcoin) {
+        const script = Buffer.from(
+          address.toOutputScript(
+            c.destination,
+            this.network === "mainnet" ? networks.bitcoin : networks.testnet,
+          ),
+        );
+        tx.decoded.outs.forEach((out, index) => {
+          if (out.value > 0n && Buffer.from(out.script).equals(script))
+            observations.push({
+              key: `bitcoin:${tx.txid}:${index}`,
+              requestId: c.id,
+              txid: tx.txid,
+              name: c.name,
+              amount: Number(out.value),
+              status: tx.confirmation
+                ? "confirmed"
+                : conflict || replacement
+                  ? "replaced"
+                  : "pending",
+              ...(conflict || replacement
+                ? { replacement: conflict?.txid ?? replacement }
+                : {}),
+            });
+        });
+      }
+    }
+    return observations;
   }
   async reconcile(requests: Contribution[]) {
     if (!requests.length) return [];

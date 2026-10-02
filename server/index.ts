@@ -38,6 +38,8 @@ const adapter =
         process.env.BARK_URL ?? "http://127.0.0.1:3001",
         process.env.BARK_TOKEN!,
         mode as "signet" | "mainnet",
+        fetch,
+        fetch,
       );
 const rehearsalStore = new Store(
   resolve(process.env.DATA_DIR ?? "data", "rehearsal.sqlite"),
@@ -47,7 +49,11 @@ const rehearsalStore = new Store(
 const rehearsal = createApp(rehearsalStore, new SimulationAdapter(), token, {
   cookiePath: "/rehearsal/api/admin",
 });
-const runtime = createApp(store, adapter, token, { rehearsal: rehearsal.app });
+const runtime = createApp(store, adapter, token, {
+  rehearsal: rehearsal.app,
+  accelerationEnabled:
+    mode === "mainnet" && process.env.MEMPOOL_ACCELERATION_ENABLED === "true",
+});
 const server = runtime.app.listen(
   Number(process.env.PORT ?? 3000),
   process.env.HOST ?? "127.0.0.1",
