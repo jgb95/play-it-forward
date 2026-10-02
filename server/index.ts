@@ -39,7 +39,15 @@ const adapter =
         process.env.BARK_TOKEN!,
         mode as "signet" | "mainnet",
       );
-const runtime = createApp(store, adapter, token);
+const rehearsalStore = new Store(
+  resolve(process.env.DATA_DIR ?? "data", "rehearsal.sqlite"),
+  config,
+  "demo",
+);
+const rehearsal = createApp(rehearsalStore, new SimulationAdapter(), token, {
+  cookiePath: "/rehearsal/api/admin",
+});
+const runtime = createApp(store, adapter, token, { rehearsal: rehearsal.app });
 const server = runtime.app.listen(
   Number(process.env.PORT ?? 3000),
   process.env.HOST ?? "127.0.0.1",
@@ -50,8 +58,10 @@ const server = runtime.app.listen(
 );
 function shutdown() {
   runtime.close();
+  rehearsal.close();
   server.close(() => {
     store.close();
+    rehearsalStore.close();
     process.exit(0);
   });
 }

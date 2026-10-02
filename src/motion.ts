@@ -24,10 +24,16 @@ export class JourneyMotion {
   private phase?: Phase;
   private deadline = 0;
   private traveling = false;
-  constructor(target: Destination) {
+  constructor(
+    target: Destination,
+    private cinematic = false,
+  ) {
     this.chapter = target.chapter;
     this.progress = target.progress;
     this.target = { ...target };
+  }
+  setPace(cinematic: boolean) {
+    this.cinematic = cinematic;
   }
   snap(target: Destination) {
     this.chapter = target.chapter;
@@ -55,12 +61,12 @@ export class JourneyMotion {
     this.target = { ...target };
     if (target.chapter > this.chapter) {
       if (!this.phase || this.phase.kind === "move") {
-        this.deadline = now + 4;
+        this.deadline = now + (this.cinematic ? 18 : 4);
         this.traveling = true;
         this.phase = {
           kind: "approach",
           start: now,
-          duration: 0.35,
+          duration: this.cinematic ? 1.2 : 0.35,
           from: this.progress,
           to: 1,
         };
@@ -70,7 +76,7 @@ export class JourneyMotion {
       this.phase = {
         kind: "move",
         start: now,
-        duration: 0.7,
+        duration: this.cinematic ? 1.8 : 0.7,
         from: this.progress,
         to: target.progress,
       };
@@ -89,7 +95,7 @@ export class JourneyMotion {
         this.phase = {
           kind: "approach",
           start: end,
-          duration: 0.15,
+          duration: this.cinematic ? 0.8 : 0.15,
           from: 0,
           to: 1,
         };
@@ -97,14 +103,21 @@ export class JourneyMotion {
         const hops = this.target.chapter - this.chapter;
         const duration = Math.max(
           0.01,
-          Math.min(1, (this.deadline - end - 0.7 - (hops - 1) * 0.15) / hops),
+          Math.min(
+            this.cinematic ? 2.8 : 1,
+            (this.deadline -
+              end -
+              (this.cinematic ? 1.8 : 0.7) -
+              (hops - 1) * (this.cinematic ? 0.8 : 0.15)) /
+              hops,
+          ),
         );
         this.phase = { kind: "slide", start: end, duration, from: 0, to: 1 };
       } else if (this.progress !== this.target.progress) {
         this.phase = {
           kind: "move",
           start: end,
-          duration: 0.7,
+          duration: this.cinematic ? 1.8 : 0.7,
           from: this.progress,
           to: this.target.progress,
         };

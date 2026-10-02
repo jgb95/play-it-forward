@@ -3,15 +3,26 @@ import { randomBytes, timingSafeEqual, createHash } from "node:crypto";
 import { resolve } from "node:path";
 import type { Config } from "../shared/model.ts";
 import { contributionSchema } from "../shared/model.ts";
+import {
+  defaultPresentation,
+  presentationSchema,
+} from "../shared/presentation.ts";
+import { MovieDirector } from "./movie.ts";
 import { Store } from "./store.ts";
 import type { PaymentAdapter } from "./payments.ts";
 export function createApp(
   store: Store,
   adapter: PaymentAdapter,
   adminToken: string,
-  options: { serveStatic?: boolean; reconcileMs?: number } = {},
+  options: {
+    serveStatic?: boolean;
+    reconcileMs?: number;
+    rehearsal?: express.Express;
+    cookiePath?: string;
+  } = {},
 ) {
   const app = express();
+  if (options.rehearsal) app.use("/rehearsal", options.rehearsal);
   app.disable("x-powered-by");
   app.set("trust proxy", "loopback");
   app.use(express.json({ limit: "4kb" }));
@@ -55,6 +66,8 @@ export function createApp(
     }
     next();
   });
+  let presentation = { ...defaultPresentation };
+  const movie = new MovieDirector();
   const state = () => store.state();
   const send = (
     res: express.Response,
@@ -94,7 +107,7 @@ export function createApp(
     }
   }
   app.get("/api/state", (_req, res) =>
-    res.json({ config: store.config, state: state() }),
+    res.json({ config: store.config, state: state(), presentation }),
   );
   app.get("/api/events", (req, res) => {
     if (clients.size >= 150) {
@@ -125,6 +138,7 @@ export function createApp(
         );
     }
     send(res, "snapshot", current, current.eventId);
+    send(res, "presentation", presentation);
     clients.add(res);
     const heartbeat = setInterval(() => res.write(": heartbeat\n\n"), 15000);
     req.on("close", () => {
@@ -195,7 +209,7 @@ export function createApp(
     sessions.set(token, Date.now() + 8 * 3600000);
     res.setHeader(
       "Set-Cookie",
-      `pif_session=${token}; HttpOnly; SameSite=Strict; Path=/api/admin; Max-Age=28800${store.config.publicUrl.startsWith("https:") ? "; Secure" : ""}`,
+      `pif_session=${token}; HttpOnly; SameSite=Strict; Path=${options.cookiePath ?? "/api/admin"}; Max-Age=28800${store.config.publicUrl.startsWith("https:") ? "; Secure" : ""}`,
     );
     res.json({ ok: true });
   });
@@ -218,6 +232,9 @@ export function createApp(
       syncError,
       screenConnections: clients.size,
       state: state(),
+      presentation,
+      movie: movie.status(Date.now()),
+      liveReady: store.mode === "mainnet" && !syncError && lastSync !== null,
     }),
   );
   app.post("/api/admin/logout", (req, res) => {
@@ -229,7 +246,7 @@ export function createApp(
     if (token) sessions.delete(token);
     res.setHeader(
       "Set-Cookie",
-      "pif_session=; HttpOnly; SameSite=Strict; Path=/api/admin; Max-Age=0",
+      `pif_session=; HttpOnly; SameSite=Strict; Path=${options.cookiePath ?? "/api/admin"}; Max-Age=0`,
     );
     res.json({ ok: true });
   });
@@ -238,6 +255,7 @@ export function createApp(
       res.status(403).json({ error: "Live funds cannot be reset" });
       return;
     }
+    movie.stop();
     store.reset();
     broadcast("reset", state(), state().eventId);
     res.json(state());
@@ -274,6 +292,77 @@ export function createApp(
       next(e);
     }
   });
+  app.post("/api/admin/presentation", (req, res) => {
+    const parsed = presentationSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Invalid presentation settings" });
+      return;
+    }
+    presentation = { ...parsed.data, skip: presentation.skip };
+    broadcast("presentation", presentation);
+    res.json(presentation);
+  });
+  app.post("/api/admin/skip", (_req, res) => {
+    presentation.skip++;
+    broadcast("presentation", presentation);
+    res.json(presentation);
+  });
+  app.post("/api/admin/movie", (req, res) => {
+    if (store.mode !== "demo") {
+      res
+        .status(403)
+        .json({
+          error: "Movie simulation is only available in rehearsal/demo",
+        });
+      return;
+    }
+    const now = Date.now();
+    try {
+      switch (req.body.action) {
+        case "start":
+          if (movie.status(now).running)
+            throw Error("Stop the current movie first");
+          movie.start(now, req.body.duration, state().total, store.config);
+          break;
+        case "pause":
+          movie.pause(now);
+          break;
+        case "resume":
+          movie.resume(now);
+          break;
+        case "stop":
+          movie.stop();
+          break;
+        default:
+          res.status(400).json({ error: "Unknown movie action" });
+          return;
+      }
+      res.json(movie.status(now));
+    } catch (e) {
+      res.status(400).json({ error: (e as Error).message });
+    }
+  });
+  let movieTicking = false;
+  const movieTimer = setInterval(async () => {
+    if (movieTicking || store.mode !== "demo") return;
+    movieTicking = true;
+    try {
+      const amount = movie.due(Date.now(), state().total);
+      if (amount > 0) {
+        const c = await adapter.create(
+          amount,
+          "Berlin movie crew",
+          "lightning",
+        );
+        store.add(c);
+        credit({ key: "demo:" + c.id, requestId: c.id, amount: c.amount });
+      }
+    } catch {
+      movie.stop();
+    } finally {
+      movieTicking = false;
+    }
+  }, 250);
   app.post("/api/admin/reconcile", async (_req, res) => {
     await reconcile();
     res.json({ lastSync, syncError });
@@ -315,6 +404,7 @@ export function createApp(
     reconcile,
     close: () => {
       clearInterval(interval);
+      clearInterval(movieTimer);
       clients.forEach((res) => res.end());
     },
   };

@@ -1525,3 +1525,46 @@ input::placeholder {
     font-size: 11px;
   }
 }
+
+.admin-card select {
+  width: 100%;
+  padding: 12px;
+  margin: 6px 0 18px;
+  background: var(--input);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+.admin-grid {
+  margin-bottom: 22px;
+}
+.preset-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.preset-row .secondary {
+  flex: 1;
+  width: auto;
+  min-width: 90px;
+}
+.mode-card {
+  margin-bottom: 24px;
+}
+.scene-title .queue-note {
+  color: #ffd28f;
+  font-size: 11px;
+  margin-top: 8px;
+}
+.celebration {
+  border: 1px solid #d4a66b66;
+  box-shadow: 0 0 40px #ffc77718;
+  padding: 18px 24px;
+}
+.celebration b {
+  font-size: 22px;
+}
+.presentation .celebration {
+  bottom: 38px;
+}

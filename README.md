@@ -39,7 +39,7 @@ For phone access over a LAN, bind the server with `HOST=0.0.0.0` and set `PUBLIC
 | 1,250,000 | Closed community vault | Treasure key |
 | 2,000,000 | Vault opens | Shared treasure |
 
-A donation gets its own light trail even when it crosses no milestone. Bursts share concise celebration banners; the ledger updates independently of animation. A large gift crosses intermediate scenes in a short montage and awards all earned accessories. The open vault continues to accumulate treasure in visual tiers based on sats, with an unlimited exact pool total up to JavaScript's safe integer limit.
+A donation gets its own light trail even when it crosses no milestone. Bursts play one named celebration at a time, with varied colored light trails and a short musical phrase when sound is enabled; accounting and the exact total update immediately. A large gift crosses intermediate scenes in a short montage and awards all earned accessories. The open vault continues to accumulate treasure in visual tiers based on sats, with an unlimited exact pool total up to JavaScript's safe integer limit.
 
 The bottom progress bar measures sats toward the vault; the chapter tracker measures sats between the current and next milestone. The journey dots identify the six places. The operator's receipt count is diagnostic only.
 
@@ -97,4 +97,10 @@ Open `/` for the overview and select **Present adventure** to open `/screen`. Th
 
 Dark mode is the default. The header theme button switches every page between light and dark and remembers the choice in this browser. Sound remains off by default. Motion respects the system reduced-motion preference and can also be switched off in the presentation footer.
 
-The courier walks from left to right according to **sats within the current chapter**, then the camera slides into the next scene. Quiet periods use a planted-foot idle pose. Multi-chapter gifts use a montage capped at four seconds; totals and rewards update immediately. Loading or reconnecting restores the current position without replaying old travel. Beyond the goal, the courier stays beside the open vault while treasure continues to grow.
+The courier walks from left to right according to **sats within the current chapter**, then the camera slides into the next scene. Quiet periods use a planted-foot idle pose. Cinematic travel is the default, with a multi-chapter montage capped at 18 seconds. The operator can choose the original snappy pace (four-second montage), adjust celebration spacing and sound volume, or skip the remaining visual queue; totals and rewards update immediately. Loading or reconnecting restores the current position without replaying old travel. Beyond the goal, the courier stays beside the open vault while treasure continues to grow.
+
+### Rehearsal and movie controls
+
+`/rehearsal/screen`, `/rehearsal/donate`, and `/rehearsal/admin` always use a separate simulated ledger, even when the main event runs on mainnet. The admin token is shared, but rehearsal cookies and money are isolated. Network selection for the main event remains a server environment setting and requires a restart.
+
+The director desk can run a 30–1,800-second movie that schedules simulated gifts through every remaining milestone and reaches the exact goal at the chosen duration. Start below the goal; reset only the rehearsal pool to run it again. Pause stops new movie gifts while existing celebrations finish. Manual gifts count toward the same target. Presentation settings and movie scheduling are temporary: restarting stops the movie and restores default pace. Receipts and totals remain durable.

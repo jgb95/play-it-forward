@@ -8,6 +8,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import QRCode from "qrcode";
 import {
+  progression,
   sats,
   type Config,
   type State,
@@ -16,10 +17,13 @@ import {
   type Method,
 } from "../shared/model";
 import { background, render, type Trail } from "./world";
+import { defaultPresentation, type Presentation } from "../shared/presentation";
+import { CelebrationQueue } from "./cinema";
 import { JourneyMotion, courierX } from "./motion";
 import "./style.css";
+const BASE = location.pathname.startsWith("/rehearsal") ? "/rehearsal" : "";
 async function api<T>(path: string, data?: unknown): Promise<T> {
-  const r = await fetch("/api" + path, {
+  const r = await fetch(BASE + "/api" + path, {
     method: data === undefined ? "GET" : "POST",
     headers: { "Content-Type": "application/json" },
     ...(data === undefined ? {} : { body: JSON.stringify(data) }),
@@ -54,9 +58,11 @@ function QR({ value, size = 160 }: { value: string; size?: number }) {
   );
 }
 function useJourney() {
-  const [data, setData] = useState<{ config: Config; state: State } | null>(
-      null,
-    ),
+  const [data, setData] = useState<{
+      config: Config;
+      state: State;
+      presentation: Presentation;
+    } | null>(null),
     [connected, setConnected] = useState(false),
     [error, setError] = useState(""),
     [events, setEvents] = useState<Celebration[]>([]),
@@ -66,13 +72,24 @@ function useJourney() {
       active = true;
     let retry: ReturnType<typeof setTimeout>;
     function connect() {
-      api<{ config: Config; state: State }>("/state")
+      api<{ config: Config; state: State; presentation: Presentation }>(
+        "/state",
+      )
         .then((d) => {
           if (!active) return;
           setData(d);
-          source = new EventSource("/api/events?after=" + d.state.eventId);
+          source = new EventSource(
+            BASE + "/api/events?after=" + d.state.eventId,
+          );
           source.onopen = () => setConnected(true);
           source.onerror = () => setConnected(false);
+          source.addEventListener("presentation", (e) =>
+            setData((p) =>
+              p
+                ? { ...p, presentation: JSON.parse((e as MessageEvent).data) }
+                : p,
+            ),
+          );
           source.addEventListener("snapshot", (e) => {
             setData((p) =>
               p ? { ...p, state: JSON.parse((e as MessageEvent).data) } : p,
@@ -160,7 +177,7 @@ function Header({
 }) {
   return (
     <header className="header">
-      <a className="wordmark" href="/">
+      <a className="wordmark" href={BASE + "/"}>
         <span className="brand-mark">↗</span>{" "}
         {config?.title === "Play It Forward" || !config
           ? "play it forward"
@@ -191,6 +208,9 @@ function World({
   config,
   restore,
   onChapter,
+  onCue,
+  onPending,
+  presentation,
 }: {
   state: State;
   events: Celebration[];
@@ -198,10 +218,33 @@ function World({
   config: Config;
   restore: number;
   onChapter: (chapter: number) => void;
+  onCue: (event: Celebration) => void;
+  onPending: (count: number) => void;
+  presentation: Presentation;
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
-  const latest = useRef({ state, events, reduced, config, restore, onChapter });
-  latest.current = { state, events, reduced, config, restore, onChapter };
+  const latest = useRef({
+    state,
+    events,
+    reduced,
+    config,
+    restore,
+    onChapter,
+    onCue,
+    onPending,
+    presentation,
+  });
+  latest.current = {
+    state,
+    events,
+    reduced,
+    config,
+    restore,
+    onChapter,
+    onCue,
+    onPending,
+    presentation,
+  };
   useEffect(() => {
     const c = ref.current!.getContext("2d")!;
     let raf = 0,
@@ -210,7 +253,11 @@ function World({
     let trails: Trail[] = [],
       tick = 0,
       reportedChapter = -1;
-    const motion = new JourneyMotion(state);
+    const motion = new JourneyMotion(state, presentation.pace === "cinematic");
+    const queue = new CelebrationQueue(state.eventId);
+    let visual = state,
+      skip = presentation.skip,
+      reportedPending = -1;
     const backgrounds = new Map<string, HTMLCanvasElement>();
     function sceneState(chapter: number, s: State, cfg: Config): State {
       const index = [
@@ -245,37 +292,57 @@ function World({
         config: cfg,
         restore: epoch,
       } = latest.current;
-      const snap = epoch !== restored || s.eventId < seen;
+      const settings = latest.current.presentation;
+      const snap =
+        epoch !== restored || s.eventId < seen || settings.skip !== skip;
       if (snap) {
         trails = [];
         seen = s.eventId;
         restored = epoch;
+        skip = settings.skip;
+        queue.clear(s.eventId);
+        visual = s;
+        motion.snap(s);
       }
-      motion.update(s, now, r || snap);
+      queue.enqueue(e);
+      const cue = queue.next(
+        now,
+        !motion.sample(now).walking,
+        settings.cueSeconds,
+      );
+      if (cue) {
+        visual = { ...s, ...progression(cue.total, cfg), total: cue.total };
+        trails.push({
+          born: now,
+          index: tick++,
+          amount: cue.amount,
+          milestone: cue.level > cue.previousLevel,
+          duration: settings.pace === "cinematic" ? 3.2 : 1.6,
+        });
+        latest.current.onCue(cue);
+      }
+      if (queue.count !== reportedPending) {
+        reportedPending = queue.count;
+        latest.current.onPending(queue.count);
+      }
+      seen = Math.max(seen, s.eventId);
+      motion.setPace(settings.pace === "cinematic");
+      motion.update(visual, now, r || snap);
       const pose = motion.sample(now);
       if (pose.chapter !== reportedChapter) {
         reportedChapter = pose.chapter;
         latest.current.onChapter(pose.chapter);
       }
-      const outgoing = sceneState(pose.chapter, s, cfg);
+      const outgoing = sceneState(pose.chapter, visual, cfg);
       const incoming =
         pose.nextChapter === undefined
           ? undefined
-          : sceneState(pose.nextChapter, s, cfg);
+          : sceneState(pose.nextChapter, visual, cfg);
       const x = incoming
         ? courierX(outgoing.chapter, 1) * (1 - pose.slide) +
           courierX(incoming.chapter, 0) * pose.slide
         : courierX(outgoing.chapter, pose.progress);
-      if (s.eventId < seen) {
-        seen = s.eventId;
-        trails = [];
-      }
-      for (const event of e)
-        if (event.id > seen) {
-          trails.push({ born: now + (tick++ % 6) * 0.04, index: tick });
-          seen = event.id;
-        }
-      trails = trails.filter((x) => now - x.born < 1.8);
+      trails = trails.filter((trail) => now - trail.born < trail.duration + 2);
       render(c, sceneBackground(outgoing), outgoing, now, trails, r, {
         x,
         walking: pose.walking,
@@ -291,6 +358,7 @@ function World({
       ref.current!.dataset.travel = String(pose.transitioning);
       ref.current!.dataset.acknowledged = String(tick);
       ref.current!.dataset.activeTrails = String(trails.length);
+      ref.current!.dataset.pending = String(queue.count);
       raf = requestAnimationFrame(frame);
     }
     raf = requestAnimationFrame(frame);
@@ -355,70 +423,69 @@ function Screen({ presenting = false }: { presenting?: boolean }) {
       name: string;
       rewards: string[];
     } | null>(null);
-  const seen = useRef(0),
-    initialised = useRef(false),
-    audio = useRef<AudioContext | null>(null);
-  useEffect(() => {
-    if (data && !initialised.current) {
-      seen.current = data.state.eventId;
-      initialised.current = true;
-    }
-  }, [data]);
-  useEffect(() => {
-    const fresh = events.filter((x) => x.id > seen.current);
-    if (!fresh.length) {
-      if (!events.length) {
-        setNotice(null);
-      }
-      return;
-    }
-    seen.current = fresh.at(-1)!.id;
+  const [pending, setPending] = useState(0);
+  const audio = useRef<AudioContext | null>(null);
+  const noticeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined,
+  );
+  function celebrate(event: Celebration) {
     const earned =
       data?.config.chapters
-        .filter((_, i) =>
-          fresh.some((e) => i > e.previousLevel && i <= e.level),
-        )
+        .filter((_, i) => i > event.previousLevel && i <= event.level)
         .map((ch) => ch.reward)
         .filter((reward) => reward !== null) ?? [];
-    setNotice((previous) => ({
-      amount:
-        (previous?.amount ?? 0) +
-        fresh.reduce((sum, event) => sum + event.amount, 0),
-      count: (previous?.count ?? 0) + fresh.length,
-      name: !previous && fresh.length === 1 ? fresh[0].name : "",
-      rewards: [...new Set([...(previous?.rewards ?? []), ...earned])],
-    }));
-
+    setNotice({
+      amount: event.amount,
+      count: 1,
+      name: event.name,
+      rewards: earned,
+    });
+    clearTimeout(noticeTimer.current);
+    noticeTimer.current = setTimeout(
+      () => setNotice(null),
+      (data?.presentation?.cueSeconds ?? 3.6) * 1000,
+    );
     if (sound && audio.current) {
-      const o = audio.current.createOscillator(),
-        g = audio.current.createGain();
-      o.type = "sine";
-      o.frequency.setValueAtTime(660, audio.current.currentTime);
-      g.gain.setValueAtTime(0.025, audio.current.currentTime);
-      g.gain.exponentialRampToValueAtTime(
-        0.001,
-        audio.current.currentTime + 0.4,
-      );
-      o.connect(g);
-      g.connect(audio.current.destination);
-      o.start();
-      o.stop(audio.current.currentTime + 0.4);
+      const context = audio.current,
+        now = context.currentTime;
+      const shift = [0, 2, 4, 7][event.id % 4];
+      const notes =
+        event.level > event.previousLevel
+          ? [130.81, 261.63, 329.63, 392, 523.25]
+          : [261.63, 329.63, 392];
+      notes.forEach((frequency, i) => {
+        const start = now + i * 0.19;
+        [1, 2.002].forEach((harmonic, h) => {
+          const oscillator = context.createOscillator(),
+            gain = context.createGain();
+          oscillator.type = h ? "triangle" : "sine";
+          oscillator.frequency.value = frequency * 2 ** (shift / 12) * harmonic;
+          gain.gain.setValueAtTime(0, start);
+          gain.gain.linearRampToValueAtTime(
+            (h ? 0.014 : 0.045) * (data?.presentation?.volume ?? 0.45),
+            start + 0.07,
+          );
+          gain.gain.exponentialRampToValueAtTime(0.0001, start + 2.6);
+          oscillator.connect(gain);
+          gain.connect(context.destination);
+          oscillator.start(start);
+          oscillator.stop(start + 2.7);
+        });
+      });
     }
-    const timeout = setTimeout(() => setNotice(null), 4500);
-    return () => clearTimeout(timeout);
-  }, [events]);
+  }
   useEffect(() => {
-    if (data) {
-      seen.current = data.state.eventId;
-      setNotice(null);
-    }
-  }, [restore]);
+    setNotice(null);
+    setPending(0);
+    clearTimeout(noticeTimer.current);
+  }, [restore, data?.presentation?.skip]);
+  useEffect(() => () => clearTimeout(noticeTimer.current), []);
   if (!data)
     return <div className="loading">{error || "Packing the satchel…"}</div>;
   const { config, state } = data;
   const c = config.chapters[state.chapter];
   const visible = config.chapters[visualChapter ?? state.chapter];
-  const url = config.publicUrl + "/donate";
+  const url = config.publicUrl + BASE + "/donate";
   return (
     <main
       className={`screen ${presenting ? "presentation" : "overview"} ${controls ? "controls-visible" : "controls-hidden"}`}
@@ -428,7 +495,7 @@ function Screen({ presenting = false }: { presenting?: boolean }) {
     >
       <Header mode={state.mode} connected={connected} config={config} />
       {!presenting && (
-        <a className="present-link" href="/screen">
+        <a className="present-link" href={BASE + "/screen"}>
           Present adventure <span>↗</span>
         </a>
       )}
@@ -461,6 +528,9 @@ function Screen({ presenting = false }: { presenting?: boolean }) {
             config={config}
             restore={restore}
             onChapter={setVisualChapter}
+            onCue={celebrate}
+            onPending={setPending}
+            presentation={data.presentation ?? defaultPresentation}
           />
           <div className="scene-title">
             <span className="chapter-label">
@@ -470,6 +540,11 @@ function Screen({ presenting = false }: { presenting?: boolean }) {
             </span>
             <h2>{visible.name}</h2>
             <p>{visible.subtitle}</p>
+            {pending > 0 && (
+              <p className="queue-note">
+                {pending} moments still to come · pool total is current
+              </p>
+            )}
           </div>
           <div className="scene-bottom">
             <span className="location-pin">⌖ BERLIN, DE</span>
@@ -562,7 +637,7 @@ function Screen({ presenting = false }: { presenting?: boolean }) {
               </p>
             </div>
           </div>
-          <a className="donate-link" href="/donate">
+          <a className="donate-link" href={BASE + "/donate"}>
             JOIN THE JOURNEY <span>↗</span>
           </a>
           <p className="pool-footnote">
@@ -651,12 +726,12 @@ function Screen({ presenting = false }: { presenting?: boolean }) {
               <button onClick={toggleFullscreen}>
                 {fullscreen ? "Exit fullscreen" : "Fullscreen ↗"}
               </button>
-              <a href="/">Overview ↗</a>
+              <a href={BASE + "/"}>Overview ↗</a>
             </>
           ) : (
-            <a href="/screen">Present adventure ↗</a>
+            <a href={BASE + "/screen"}>Present adventure ↗</a>
           )}
-          <a href="/admin">Operator ↗</a>
+          <a href={BASE + "/admin"}>Operator ↗</a>
         </div>
       </footer>
       {fullscreenError && (
@@ -914,7 +989,7 @@ function Donate() {
           {sats(data.state.total)} <small>sats</small>
         </b>
       </div>
-      <a className="back-link" href="/screen">
+      <a className="back-link" href={BASE + "/screen"}>
         Follow the adventure ↗
       </a>
     </main>
@@ -928,10 +1003,24 @@ function Admin() {
     [amount, setAmount] = useState(5000),
     [name, setName] = useState("Berlin community"),
     [message, setMessage] = useState(""),
-    [busy, setBusy] = useState(false);
+    [busy, setBusy] = useState(false),
+    [burstCount, setBurstCount] = useState(10),
+    [movieDuration, setMovieDuration] = useState(180),
+    [pace, setPace] = useState<"cinematic" | "snappy">("cinematic"),
+    [cueSeconds, setCueSeconds] = useState(3.6),
+    [volume, setVolume] = useState(0.45);
+  const settingsLoaded = useRef(false);
   async function refresh() {
     try {
-      setHealth(await api("/admin/health"));
+      const next = await api<any>("/admin/health");
+      setHealth(next);
+      if (!settingsLoaded.current) {
+        const p = next.presentation ?? defaultPresentation;
+        setPace(p.pace);
+        setCueSeconds(p.cueSeconds);
+        setVolume(p.volume);
+        settingsLoaded.current = true;
+      }
       setLogged(true);
     } catch {
       setLogged(false);
@@ -961,7 +1050,9 @@ function Admin() {
         connected={connected}
         config={data?.config}
       />
-      <p className="eyebrow">BEHIND THE ADVENTURE</p>
+      <p className="eyebrow">
+        BEHIND THE ADVENTURE {BASE ? "· ISOLATED REHEARSAL" : "· EVENT"}
+      </p>
       <h1>
         Operator’s desk<span className="orange">.</span>
       </h1>
@@ -1037,6 +1128,43 @@ function Admin() {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
               />
+              <label htmlFor="burst-count">Donations in a burst (1–100)</label>
+              <input
+                id="burst-count"
+                type="number"
+                min="1"
+                max="100"
+                value={burstCount}
+                onChange={(e) => setBurstCount(Number(e.target.value))}
+              />
+              <div className="preset-row">
+                {[1000, 10000, 50000, 250000].map((n) => (
+                  <button
+                    className="secondary"
+                    key={n}
+                    onClick={() => setAmount(n)}
+                  >
+                    {sats(n)} sats
+                  </button>
+                ))}
+              </div>
+              <button
+                className="secondary"
+                disabled={
+                  busy ||
+                  health?.mode !== "demo" ||
+                  !data ||
+                  data.state.vaultOpen
+                }
+                onClick={() =>
+                  act("simulate", {
+                    amount: data!.state.remaining,
+                    name: "Next chapter",
+                  })
+                }
+              >
+                Reach next milestone ↗
+              </button>
               <button
                 className="primary"
                 disabled={busy || health?.mode !== "demo"}
@@ -1047,9 +1175,11 @@ function Admin() {
               <button
                 className="secondary"
                 disabled={busy || health?.mode !== "demo"}
-                onClick={() => act("simulate", { amount, name, count: 100 })}
+                onClick={() =>
+                  act("simulate", { amount, name, count: burstCount })
+                }
               >
-                Burst · 100 donations
+                Send burst · {burstCount} donations
               </button>
               <button
                 className="secondary"
@@ -1075,6 +1205,161 @@ function Admin() {
               </button>
             </section>
           </div>
+          <div className="admin-grid">
+            <section className="admin-card">
+              <p className="eyebrow">THE DIRECTOR’S CHAIR</p>
+              <h2>Give every gift a moment.</h2>
+              <label htmlFor="pace">Travel style</label>
+              <select
+                id="pace"
+                value={pace}
+                onChange={(e) =>
+                  setPace(e.target.value as "cinematic" | "snappy")
+                }
+              >
+                <option value="cinematic">
+                  Cinematic · slow camera travel
+                </option>
+                <option value="snappy">Snappy · quick transitions</option>
+              </select>
+              <label htmlFor="cue-seconds">
+                Seconds per donation celebration
+              </label>
+              <input
+                id="cue-seconds"
+                type="number"
+                min="1"
+                max="8"
+                step=".2"
+                value={cueSeconds}
+                onChange={(e) => setCueSeconds(Number(e.target.value))}
+              />
+              <label htmlFor="volume">
+                Music volume · {Math.round(volume * 100)}%
+              </label>
+              <input
+                id="volume"
+                type="range"
+                min="0"
+                max="1"
+                step=".05"
+                value={volume}
+                onChange={(e) => setVolume(Number(e.target.value))}
+              />
+              <p>
+                Sound must be enabled on the venue screen. Pool totals always
+                update immediately; celebrations play individually.
+              </p>
+              <button
+                className="primary"
+                disabled={busy}
+                onClick={() =>
+                  act("presentation", { pace, cueSeconds, volume })
+                }
+              >
+                Apply to connected screens
+              </button>
+              <button
+                className="secondary"
+                disabled={busy}
+                onClick={() => act("skip", {})}
+              >
+                Skip queued celebrations · catch up now
+              </button>
+            </section>
+            <section className="admin-card">
+              <p className="eyebrow">MOVIE MODE · SIMULATED SATS ONLY</p>
+              <h2>A whole adventure, on a timer.</h2>
+              <label htmlFor="movie-duration">
+                Movie duration in seconds (30–1800)
+              </label>
+              <input
+                id="movie-duration"
+                type="number"
+                min="30"
+                max="1800"
+                value={movieDuration}
+                onChange={(e) => setMovieDuration(Number(e.target.value))}
+              />
+              <p>
+                Gifts are paced through each remaining chapter, reaching the
+                goal at the scheduled time. The final celebration may finish a
+                few seconds later. Pause stops new movie gifts; queued
+                celebrations continue.
+              </p>
+              <p>
+                {health?.movie?.running
+                  ? `${health.movie.paused ? "Paused" : "Playing"} · ${Math.ceil(health.movie.remaining)} seconds left · ${health.movie.gifts}/${health.movie.planned} gifts`
+                  : "Ready for the next screening."}
+              </p>
+              <button
+                className="primary"
+                disabled={
+                  busy || health?.mode !== "demo" || health?.movie?.running
+                }
+                onClick={() =>
+                  act("movie", { action: "start", duration: movieDuration })
+                }
+              >
+                Start movie ↗
+              </button>
+              <div className="preset-row">
+                <button
+                  className="secondary"
+                  disabled={busy || !health?.movie?.running}
+                  onClick={() =>
+                    act("movie", {
+                      action: health?.movie?.paused ? "resume" : "pause",
+                    })
+                  }
+                >
+                  {health?.movie?.paused ? "Resume movie" : "Pause movie"}
+                </button>
+                <button
+                  className="secondary"
+                  disabled={busy || !health?.movie?.running}
+                  onClick={() => act("movie", { action: "stop" })}
+                >
+                  Stop movie
+                </button>
+              </div>
+            </section>
+          </div>
+          <section className="admin-card mode-card">
+            <p className="eyebrow">EVENT AND REHEARSAL</p>
+            <h2>
+              {BASE
+                ? "Rehearsal · its own demo ledger"
+                : health?.mode === "mainnet"
+                  ? "Mainnet event"
+                  : "Event is in " + (health?.mode ?? "demo") + " mode"}
+            </h2>
+            <p>
+              {BASE
+                ? "These simulated receipts never enter the event prize pool or wallet."
+                : "Use rehearsal for movie demos and practice. The event’s network is configured at server startup so switching views cannot swap wallets or mix funds."}
+            </p>
+            <a className="primary" href={BASE ? "/admin" : "/rehearsal/admin"}>
+              {BASE
+                ? "Return to event operator desk ↗"
+                : "Open isolated rehearsal ↗"}
+            </a>
+            <a
+              className="secondary"
+              href={BASE + "/screen"}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Open this venue screen ↗
+            </a>
+            {!BASE && (
+              <p>
+                {health?.liveReady
+                  ? "Mainnet wallet reconciliation is healthy."
+                  : "Mainnet setup: install Barkd 0.7.1, create and back up a mainnet wallet, set BARK_TOKEN and PAYMENT_MODE=mainnet, configure HTTPS, then enable LIVE_PAYMENTS_ENABLED and restart. Run a small settlement test before sharing the QR."}
+              </p>
+            )}
+          </section>
           <button
             className="secondary"
             onClick={async () => {
@@ -1091,13 +1376,13 @@ function Admin() {
           {message}
         </p>
       )}
-      <a className="back-link" href="/screen">
+      <a className="back-link" href={BASE + "/screen"}>
         Back to the venue screen ↗
       </a>
     </main>
   );
 }
-const path = location.pathname;
+const path = location.pathname.slice(BASE.length) || "/";
 createRoot(document.getElementById("root")!).render(
   path === "/admin" ? (
     <Admin />

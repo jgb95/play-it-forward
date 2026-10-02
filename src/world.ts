@@ -52,7 +52,16 @@ function building(
   box(c, x - 2, y, w + 4, 4, "#425451");
   for (let a = x + 7; a < x + w - 5; a += 13)
     for (let b = y + 12; b < y + h - 6; b += 18) {
-      box(c, a, b, 6, 9, lit && rand() > 0.4 ? "#b79b59" : "#203e40");
+      box(
+        c,
+        a,
+        b,
+        6,
+        9,
+        lit && rand() > 0.4
+          ? ["#ffd58a", "#ef987e", "#97c9c2"][Math.floor(rand() * 3)]
+          : "#203e40",
+      );
       box(c, a, b + 4, 6, 1, col);
     }
   for (let a = y + 9; a < y + h; a += 12) box(c, x, a, w, 1, "#ffffff06");
@@ -98,9 +107,17 @@ export function background(scene: number, vaultOpen: boolean, tier: number) {
   const c = cvs.getContext("2d")!;
   seed = 7 + scene;
   const sky = c.createLinearGradient(0, 0, 0, 240);
-  sky.addColorStop(0, "#183f42");
-  sky.addColorStop(0.65, "#527468");
-  sky.addColorStop(1, "#c8a36b");
+  const skies = [
+    ["#243b58", "#b87972", "#ffbd7b"],
+    ["#193d57", "#9c7990", "#fbbf8c"],
+    ["#273b60", "#b87685", "#ffba69"],
+    ["#30395d", "#ae6a84", "#efa76e"],
+    ["#273d59", "#ba837c", "#ffce89"],
+    ["#192e43", "#57665a", "#d5aa66"],
+  ][scene];
+  sky.addColorStop(0, skies[0]);
+  sky.addColorStop(0.65, skies[1]);
+  sky.addColorStop(1, skies[2]);
   c.fillStyle = sky;
   c.fillRect(0, 0, W, H);
   box(c, 493, 35, 23, 23, "#e3d4a1");
@@ -113,21 +130,21 @@ export function background(scene: number, vaultOpen: boolean, tier: number) {
       105 + rand() * 40,
       35 + rand() * 25,
       110,
-      "#294a49",
+      "#334758",
     );
-  box(c, 0, 219, 640, 81, "#3b4940");
+  box(c, 0, 219, 640, 81, "#51434c");
   box(c, 0, 221, 640, 5, "#b3a07a");
   for (let i = 0; i < 1000; i++) {
     const x = rand() * 640,
       y = 230 + rand() * 70;
-    box(c, x, y, 2 + rand() * 5, 1, rand() > 0.4 ? "#536053" : "#243d36");
+    box(c, x, y, 2 + rand() * 5, 1, rand() > 0.4 ? "#78635d" : "#303f48");
   }
   if (scene === 0) {
-    box(c, 110, 70, 380, 141, "#233f40");
+    box(c, 110, 70, 380, 141, "#294652");
     box(c, 100, 68, 400, 7, "#77928a");
     for (let x = 119; x < 490; x += 21) {
-      box(c, x, 78, 16, 110, "#39716d");
-      box(c, x + 1, 79, 7, 108, "#72a09822");
+      box(c, x, 78, 16, 110, "#338789");
+      box(c, x + 1, 79, 7, 108, "#9fdce144");
       box(c, x + 7, 78, 2, 110, "#81978a");
     }
     for (let y = 84; y < 186; y += 17) box(c, 110, y, 380, 2, "#183d3e");
@@ -146,8 +163,8 @@ export function background(scene: number, vaultOpen: boolean, tier: number) {
     }
     tree(c, 67, 225, 1.4);
     tree(c, 556, 228, 1.35);
-    stall(c, 26, 246, "#a66a43");
-    stall(c, 540, 247, "#3d7770");
+    stall(c, 26, 276, "#d48062");
+    stall(c, 540, 276, "#258f90");
   } else if (scene === 1) {
     box(c, 0, 167, 640, 64, "#255453");
     for (let i = 0; i < 210; i++)
@@ -198,7 +215,7 @@ export function background(scene: number, vaultOpen: boolean, tier: number) {
     c.fillText("14:++", 313, 192);
     tree(c, 590, 236, 1.2);
     lamp(c, 93, 242);
-    stall(c, 478, 251, "#ac753e");
+    stall(c, 478, 276, "#ac753e");
   } else if (scene === 3) {
     box(c, 40, 140, 560, 80, "#c8b686");
     for (let x = 40; x < 600; x += 70) {
@@ -300,10 +317,41 @@ export function background(scene: number, vaultOpen: boolean, tier: number) {
     c.restore();
     lamp(c, 175, 231);
     lamp(c, 465, 231);
-    stall(c, 44, 243, "#3a6150");
+    stall(c, 44, 276, "#3a6150");
     box(c, 510, 238, 46, 22, "#815834");
     box(c, 507, 235, 52, 5, "#b3874e");
   }
+  // Market life, warm strings of light, and foreground color give each stop a home.
+  if (scene !== 5) {
+    for (let i = 0; i < 16; i++) {
+      const x = 18 + i * 40,
+        y = 93 + Math.sin(i * 0.4) * 12;
+      box(c, x, y, 40, 1, "#172c38");
+      box(c, x + 18, y + 3, 3, 4, i % 3 ? "#ffcd83" : "#f3a8a4");
+      glow(c, x + 19, y + 5, 15, "#ffb85635");
+    }
+    for (let i = 0; i < 10; i++) {
+      const x = 22 + i * 61;
+      box(c, x, 207, 4, 5, "#b99382");
+      box(
+        c,
+        x - 1,
+        212,
+        6,
+        9,
+        ["#d57865", "#467d8c", "#aa8753", "#785d8c"][i % 4],
+      );
+      box(c, x, 221, 2, 6, "#203138");
+      box(c, x + 3, 221, 2, 6, "#203138");
+    }
+  }
+  for (let side = 0; side < 2; side++)
+    for (let i = 0; i < 22; i++) {
+      const x = side ? 606 + rand() * 34 : rand() * 34,
+        y = 281 + rand() * 19;
+      box(c, x, y, 2, 9, "#397c61");
+      box(c, x - 2, y - 2, 5, 3, ["#f39c86", "#ffcf77", "#ac8bcc"][i % 3]);
+    }
   for (let i = 0; i < 300; i++)
     box(c, rand() * 640, rand() * 300, 1, 1, "#fff6c10c");
   return cvs;
@@ -373,7 +421,13 @@ function courier(
   }
   c.restore();
 }
-export type Trail = { born: number; index: number };
+export type Trail = {
+  born: number;
+  index: number;
+  amount: number;
+  milestone: boolean;
+  duration: number;
+};
 function environment(
   c: CanvasRenderingContext2D,
   bg: HTMLCanvasElement,
@@ -460,25 +514,128 @@ export function render(
     trails.length > 0,
     pose.walking && !reduced,
   );
-  if (reduced && trails.length) glow(c, x - 8, y - 27, 25, "#ffb95744");
+  if (reduced && trails.length) glow(c, x - 8, y - 27, 34, "#ffb95755");
   for (const trail of reduced ? [] : trails) {
-    const p = Math.min(1, (time - trail.born) / 1.6);
-    if (p < 0 || p >= 1) continue;
-    const sx = 630 - (trail.index % 5) * 18,
-      sy = 48 + (trail.index % 7) * 16;
-    for (let j = 0; j < 9; j++) {
-      const q = Math.max(0, p - j * 0.016);
-      const tx = sx + (x - 8 - sx) * q,
-        ty = sy + (y - 27 - sy) * q - Math.sin(q * Math.PI) * 58;
+    const age = time - trail.born,
+      p = Math.min(1, age / trail.duration);
+    if (age < 0) continue;
+    const color = ["255,206,122", "127,226,211", "255,168,182", "181,169,255"][
+      trail.index % 4
+    ];
+    const origins = [
+      [42, 65],
+      [595, 76],
+      [116, 148],
+      [517, 117],
+      [315, 36],
+      [35, 210],
+      [610, 205],
+    ];
+    const [sx, sy] = origins[trail.index % origins.length];
+    const strength = Math.min(
+      2.4,
+      1 + Math.log10(Math.max(1, trail.amount) / 1000 + 1) * 0.35,
+    );
+    if (p < 1) {
+      for (let j = 0; j < 24; j++) {
+        const q = Math.max(0, p - j * 0.012);
+        const tx = sx + (x - 8 - sx) * q + Math.sin(q * Math.PI * 2) * 18,
+          ty =
+            sy +
+            (y - 27 - sy) * q -
+            Math.sin(q * Math.PI) * (45 + (trail.index % 3) * 14);
+        glow(
+          c,
+          tx,
+          ty,
+          j < 3 ? 10 * strength : 3,
+          `rgba(${color},${(1 - j / 24) * 0.13})`,
+        );
+        box(
+          c,
+          tx,
+          ty,
+          j < 3 ? 3 * strength : 2,
+          j < 3 ? 3 * strength : 2,
+          `rgba(${color},${1 - j / 25})`,
+        );
+        if (j % 3 === 0)
+          box(
+            c,
+            tx + Math.sin(time * 4 + j) * 9,
+            ty + Math.cos(time * 3 + j) * 7,
+            1,
+            1,
+            "#fff6da",
+          );
+      }
+      glow(c, sx, sy, 26 * Math.sin(p * Math.PI), `rgba(${color},.22)`);
+    }
+    const arrival = Math.max(0, age - trail.duration * 0.8);
+    if (arrival > 0 && arrival < 2.4) {
+      const fade = 1 - arrival / 2.4;
+      glow(
+        c,
+        x - 8,
+        y - 27,
+        (28 + arrival * 28) * strength,
+        `rgba(${color},${fade * 0.27})`,
+      );
+      c.strokeStyle = `rgba(${color},${fade * 0.65})`;
+      c.lineWidth = 1;
+      c.beginPath();
+      c.ellipse(
+        x,
+        y + 2,
+        13 + arrival * 40,
+        3 + arrival * 8,
+        0,
+        0,
+        Math.PI * 2,
+      );
+      c.stroke();
+      for (let j = 0; j < (trail.milestone ? 28 : 12); j++) {
+        const a = j * 2.399,
+          radius = arrival * (18 + (j % 5) * 4);
+        box(
+          c,
+          x - 8 + Math.cos(a) * radius,
+          y - 27 + Math.sin(a) * radius - arrival * 13,
+          2,
+          2,
+          `rgba(${color},${fade})`,
+        );
+      }
+      // A gift briefly lights the city, not just the satchel.
+      for (const lx of [67, 163, 453, 556])
+        glow(c, lx, 191, 22 + arrival * 6, `rgba(255,197,113,${fade * 0.13})`);
+    }
+    if (trail.milestone && age > 0.6 && age < 4.8) {
+      const fade = Math.sin(Math.min(1, (age - 0.6) / 4.2) * Math.PI);
+      for (let j = 0; j < 24; j++) {
+        const fx = (j * 79 + trail.index * 43) % W,
+          fy = 26 + ((age * 20 + j * 17) % 170);
+        box(c, fx, fy, 2, 4, `rgba(${color},${fade * 0.75})`);
+      }
+    }
+  }
+  // Drifting petals and a soft foreground vignette: atmospheric depth without moving the courier.
+  if (!reduced && state.chapter !== 5)
+    for (let i = 0; i < 7; i++) {
+      const px = (i * 101 + time * 5) % W,
+        py = 60 + ((i * 31 + time * 8) % 210);
       box(
         c,
-        tx,
-        ty,
-        j < 2 ? 4 : 2,
-        j < 2 ? 4 : 2,
-        `rgba(255,211,126,${1 - j / 10})`,
+        px + Math.sin(time + i) * 7,
+        py,
+        2,
+        1,
+        i % 2 ? "#ffd2b355" : "#d8b5f055",
       );
     }
-    glow(c, x - 8, y - 27, 25 * p, "#ffb95744");
-  }
+  const vignette = c.createLinearGradient(0, 260, 0, H);
+  vignette.addColorStop(0, "#17233200");
+  vignette.addColorStop(1, "#17233255");
+  c.fillStyle = vignette;
+  c.fillRect(0, 260, W, 40);
 }

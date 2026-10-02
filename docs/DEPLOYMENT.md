@@ -1,6 +1,6 @@
 # Deploy on a Linux VPS
 
-This project ships deployment files; it does not provision a VPS or purchase a domain. Use a Linux VPS with Node.js 24+, pnpm 11.19.0, systemd, and Caddy. Node must be available at `/usr/bin/node`; edit `ExecStart` if your installation differs.
+This project ships deployment files. Domain and VPS access are organizer prerequisites. Use a Linux VPS with Node.js 24+, pnpm 11.19.0, systemd, and either Caddy or an existing nginx HTTPS site. Node must be available at `/usr/bin/node`; edit `ExecStart` if your installation differs.
 
 ## First deploy the simulation
 
@@ -42,3 +42,21 @@ The donation total measures net credited receipts raised through the app, not th
 ## Updating
 
 Back up before an update. Keep Node 24+ and Bark 0.7.1 for this release. Run tests and the build, restart the app, and verify health and totals. The adapter rejects an incompatible daemon version or mismatched network. Node's SQLite migrations currently only create missing tables; no destructive migration is included. Keep the previous checkout and backups for rollback.
+
+## Existing nginx and Certbot
+
+Keep the existing certificate directives and other sites. In this domain's HTTPS block, replace the static `location /` with:
+
+```nginx
+location / {
+    proxy_pass http://127.0.0.1:3000;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_buffering off;
+    proxy_read_timeout 3600s;
+}
+```
+
+Back up the site config first, run `nginx -t`, then reload nginx. Check HTTPS, SSE, and the rehearsal QR. Bark must remain bound to `127.0.0.1:3001`, with authentication enabled.

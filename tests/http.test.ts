@@ -127,3 +127,110 @@ test("SSE resumes bounded receipt history then supplies authoritative state", as
     await s.close();
   }
 });
+
+test("director controls validate settings and live mode refuses movie simulation", async () => {
+  const s = await setup("signet");
+  try {
+    const login = await s.post("/admin/login", { token });
+    const cookie = login.headers.get("set-cookie")!.split(";")[0];
+    assert.equal(
+      (await s.post("/admin/movie", { action: "start", duration: 60 }, cookie))
+        .status,
+      403,
+    );
+    assert.equal(
+      (
+        await s.post(
+          "/admin/presentation",
+          { pace: "cinematic", cueSeconds: 3.6, volume: 0.4 },
+          cookie,
+        )
+      ).status,
+      200,
+    );
+    assert.equal(
+      (
+        await s.post(
+          "/admin/presentation",
+          { pace: "cinematic", cueSeconds: -1, volume: 0.4 },
+          cookie,
+        )
+      ).status,
+      400,
+    );
+    assert.equal((await s.post("/admin/skip", {}, cookie)).status, 200);
+    assert.equal(s.store.state().total, 0);
+  } finally {
+    await s.close();
+  }
+});
+test("movie controls require login, support pause/stop and reject invalid durations", async () => {
+  const s = await setup();
+  try {
+    assert.equal(
+      (await s.post("/admin/movie", { action: "start", duration: 60 })).status,
+      401,
+    );
+    const login = await s.post("/admin/login", { token });
+    const cookie = login.headers.get("set-cookie")!.split(";")[0];
+    assert.equal(
+      (await s.post("/admin/movie", { action: "start", duration: 1 }, cookie))
+        .status,
+      400,
+    );
+    assert.equal(
+      (await s.post("/admin/movie", { action: "start", duration: 60 }, cookie))
+        .status,
+      200,
+    );
+    const pause = await s.post("/admin/movie", { action: "pause" }, cookie);
+    assert.equal((await pause.json()).paused, true);
+    assert.equal(
+      (await s.post("/admin/movie", { action: "stop" }, cookie)).status,
+      200,
+    );
+  } finally {
+    await s.close();
+  }
+});
+test("rehearsal credits cannot change the event ledger and cookies stay scoped", async () => {
+  const eventStore = new Store(":memory:", config, "signet"),
+    demoStore = new Store(":memory:", config, "demo");
+  const rehearsal = createApp(demoStore, new SimulationAdapter(), token, {
+    serveStatic: false,
+    cookiePath: "/rehearsal/api/admin",
+  });
+  const event = createApp(eventStore, new SimulationAdapter(), token, {
+    serveStatic: false,
+    rehearsal: rehearsal.app,
+  });
+  const server = event.app.listen(0, "127.0.0.1");
+  await new Promise<void>((r) => server.once("listening", r));
+  const base = "http://127.0.0.1:" + (server.address() as any).port;
+  try {
+    const login = await fetch(base + "/rehearsal/api/admin/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token }),
+    });
+    assert.match(
+      login.headers.get("set-cookie")!,
+      /Path=\/rehearsal\/api\/admin/,
+    );
+    const cookie = login.headers.get("set-cookie")!.split(";")[0];
+    const gift = await fetch(base + "/rehearsal/api/admin/simulate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({ amount: 5000 }),
+    });
+    assert.equal(gift.status, 200);
+    assert.equal(demoStore.state().total, 5000);
+    assert.equal(eventStore.state().total, 0);
+  } finally {
+    event.close();
+    rehearsal.close();
+    await new Promise<void>((r) => server.close(() => r()));
+    eventStore.close();
+    demoStore.close();
+  }
+});
