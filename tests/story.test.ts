@@ -306,3 +306,54 @@ test("concurrent Express invoice requests issue one invoice; confirmation racing
     store.close();
   }
 });
+
+test("100 compressed pulses blend into bounded trails without discarding any gift amount", async () => {
+  const { blendMagic } = await import("../src/cinema.ts");
+  const gifts = Array.from({ length: 100 }, (_, i) => ({
+    amount: i + 1,
+    id: i,
+  }));
+  const trails = blendMagic(gifts);
+  assert.equal(trails.length, 24);
+  assert.equal(
+    trails.reduce((n, t) => n + t.amount, 0),
+    5050,
+  );
+  assert.equal(trails.at(-1)?.id, 99);
+});
+test("pending observations and active Express attempts survive database reopening", async () => {
+  const { mkdtempSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const dir = mkdtempSync(tmpdir() + "/pif-story-");
+  try {
+    const path = dir + "/demo.sqlite";
+    let store = new Store(path, config, "demo");
+    const c = await new SimulationAdapter().create(13, "Recover me", "bitcoin");
+    store.add(c);
+    store.observe({
+      key: "bitcoin:tx:0",
+      requestId: c.id,
+      txid: "tx",
+      amount: 13,
+      name: c.name,
+      status: "pending",
+    });
+    const sim = new SimulatedAccelerator(config.goal);
+    const attempt = await sim.invoice(await sim.quote("tx", c.id));
+    store.setAttempt(attempt);
+    const cutoff = store.state().eventId;
+    store.close();
+    store = new Store(path, config, "demo");
+    assert.equal(store.state().total, 0);
+    assert.equal(store.state().onchain?.length, 1);
+    assert.equal(store.attempt("tx")?.invoiceId, attempt.invoiceId);
+    assert.equal(store.history().cutoff, cutoff);
+    const key = store.state().eventKey;
+    store.reset();
+    assert.notEqual(store.state().eventKey, key);
+    assert.equal(store.state().onchain?.length, 0);
+    store.close();
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

@@ -27,3 +27,16 @@ export class CelebrationQueue {
     this.until = 0;
   }
 }
+// Dense recaps keep every gift's energy while drawing a bounded number of trails.
+export function blendMagic<T extends { amount: number }>(
+  values: T[],
+  limit = 24,
+): T[] {
+  if (values.length <= limit) return values;
+  const count = values.length - limit + 1,
+    merged = values.slice(0, count);
+  return [
+    { ...merged.at(-1)!, amount: merged.reduce((n, v) => n + v.amount, 0) },
+    ...values.slice(count),
+  ];
+}

@@ -24,7 +24,7 @@ import {
 } from "../shared/model";
 import { background, render, type Trail } from "./world";
 import { defaultPresentation, type Presentation } from "../shared/presentation";
-import { CelebrationQueue } from "./cinema";
+import { CelebrationQueue, blendMagic } from "./cinema";
 import {
   ReplayReader,
   RecapTimeline,
@@ -312,6 +312,7 @@ function World({
       recap: RecapTimeline | undefined,
       sessionFinished = false,
       joiningLive = false,
+      introRetry = 0,
       tailEvents: Celebration[] = [];
     let previousCrew = new Set(state.crew),
       previousRewards = new Set(state.rewards),
@@ -357,6 +358,7 @@ function World({
       previousRewards.clear();
       sessionFinished = false;
       joiningLive = false;
+      introRetry = 0;
       tailEvents = [];
       visual = emptyState(cfg, state.mode);
       motion.snap(visual);
@@ -395,6 +397,24 @@ function World({
         previousCrew = new Set(s.crew);
         previousRewards = new Set(s.rewards);
         trails = [];
+      }
+      if (
+        p?.kind === "intro" &&
+        !sessionFinished &&
+        l.restore !== restored &&
+        s.total < p.history.finalTotal &&
+        s.eventId > p.history.cutoff
+      ) {
+        sessionFinished = true;
+        recap = undefined;
+        visual = s;
+        motion.snap(s);
+        queue.clear(s.eventId);
+        trails = [];
+        joins.clear();
+        previousCrew = new Set(s.crew);
+        previousRewards = new Set(s.rewards);
+        l.onStory("");
       }
       const replaying = !!p && (!sessionFinished || p.kind === "replay");
       const step =
@@ -453,7 +473,7 @@ function World({
           total,
           onchain: recap.pending(),
         };
-        if (recap.finished(time) && !joiningLive) {
+        if (recap.finished(time) && !joiningLive && time >= introRetry) {
           joiningLive = true;
           l.onIntroComplete(p.history.cutoff)
             .then((tail) => {
@@ -474,6 +494,7 @@ function World({
             })
             .catch(() => {
               joiningLive = false;
+              introRetry = time + 2;
             });
         }
       } else {
@@ -601,9 +622,9 @@ function World({
         ? courierX(shown.chapter, 1) * (1 - pose.slide) +
           courierX(incoming.chapter, 0) * pose.slide
         : courierX(shown.chapter, pose.progress);
-      trails = trails
-        .filter((trail) => time - trail.born < trail.duration + 2)
-        .slice(-24);
+      trails = blendMagic(
+        trails.filter((trail) => time - trail.born < trail.duration + 2),
+      );
       const members = cfg.chapters
         .map((_, i) => chapterRecruit(cfg, i))
         .filter((member) => shown.crew.includes(member.id));

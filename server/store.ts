@@ -176,6 +176,12 @@ export class Store {
         "DELETE FROM receipts; DELETE FROM requests; DELETE FROM observations; DELETE FROM acceleration_quotes; DELETE FROM accelerations",
       );
       this.db
+        .prepare("UPDATE metadata SET value=? WHERE key='storyConfig'")
+        .run(JSON.stringify(this.config));
+      this.db
+        .prepare("UPDATE metadata SET value=? WHERE key='eventKey'")
+        .run(randomUUID());
+      this.db
         .prepare("INSERT INTO events(kind,payload,created) VALUES(?,?,?)")
         .run("reset", "{}", Date.now());
       this.db.exec("COMMIT");
