@@ -887,16 +887,19 @@ function ContributionActivity({
                   Express · Mempool Accelerator
                 </span>
               )}
-              {!fullscreen && row.txid && /^[a-f0-9]{64}$/i.test(row.txid) && (
-                <a
-                  className="feed-explorer"
-                  href={`https://mempool.space/${mode === "signet" ? "signet/" : ""}tx/${row.txid}`}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  View transaction ↗
-                </a>
-              )}
+              {!fullscreen &&
+                mode !== "demo" &&
+                row.txid &&
+                /^[a-f0-9]{64}$/i.test(row.txid) && (
+                  <a
+                    className="feed-explorer"
+                    href={`https://mempool.space/${mode === "signet" ? "signet/" : ""}tx/${row.txid}`}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    View transaction ↗
+                  </a>
+                )}
             </div>
           </article>
         ))}
