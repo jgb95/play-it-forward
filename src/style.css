@@ -1615,7 +1615,7 @@ input::placeholder {
 .pending-control button,
 .express-checkout button {
   background: var(--surface, #17262b);
-  color: var(--text, #fff);
+  color: var(--ink);
   border: 1px solid #527078;
   border-radius: 6px;
   padding: 0.4rem 0.65rem;
@@ -1728,3 +1728,5 @@ input::placeholder {
     animation: none;
   }
 }
+
+.departures,.presentation .playback-controls {color:#f0eddf;}
