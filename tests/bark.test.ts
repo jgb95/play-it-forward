@@ -230,3 +230,39 @@ test("pending actual outputs are independent, replacements need a competing spen
   assert.equal(observations[0].replacement, replacement);
   assert.notEqual(observations[0].key, observations[1].key);
 });
+
+test("real Bark mainnet Taproot output is pending then confirmed without an ECC signing module", async () => {
+  const destination =
+    "bc1p0fzzsmctyzd343r6wqaew746z722x230vk7g6j6lnm4h8plpqllqrqjyrg";
+  const raw =
+    "0200000000010142075b99f37d5e1ccf23e63a6d47a1eae4ad0d3f8b1b672098a0206fb1b703c90100000000fdffffff0310270000000000002251207a44286f0b209b1ac47a703b977aba1794a32a2f65bc8d4b5f9eeb7387e107fe4a0100000000000022512024a8bf24bd4c14b51099fb5e9976378396233aed746c8fbcb58f4447ab667f92d1ad0f000000000022512063c808458bb71e83df88937a99ca38ce73efdcecff1676a62c2a612f046441fd014070f33fa3f92653f03ab1c01ba9f67328d3430a4515de6ce5fea897966de1899c93ab037abefa8444e3c52991f2bc402e9c6052635382290f6d325d936b147caa5ecb0e00";
+  const txid =
+    "e12939384c571a9f17a1036c710a5dc2a0a8a30e97f5ec526e4251afc8b17a55";
+  const tx = { txid, tx: raw, confirmation: null as null | { height: number } };
+  const bark = new BarkAdapter(
+    "http://localhost:3001",
+    "test-secret",
+    "mainnet",
+    mock({ "/onchain/transactions": [tx] }),
+  );
+  const request = c("bitcoin", destination);
+  assert.equal((await bark.inspect([request]))[0].status, "pending");
+  assert.equal((await bark.reconcile([request])).length, 0);
+  tx.confirmation = { height: 969568 };
+  const output = (await bark.inspect([request]))[0];
+  assert.equal(output.status, "confirmed");
+  assert.equal(output.amount, 10000);
+  assert.deepEqual(await bark.reconcile([request]), [
+    { key: `bitcoin:${txid}:0`, requestId: request.id, amount: 10000 },
+  ]);
+  await assert.rejects(
+    bark.inspect([{ ...request, destination: destination.slice(0, -1) + "a" }]),
+  );
+  const wrongNetwork = new BarkAdapter(
+    "http://localhost:3001",
+    "test-secret",
+    "signet",
+    mock({ "/onchain/transactions": [tx] }),
+  );
+  await assert.rejects(wrongNetwork.inspect([request]));
+});

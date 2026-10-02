@@ -51,6 +51,25 @@ type WalletTx = {
   tx: string;
   confirmation: { height: number } | null;
 };
+// Receiving only needs the witness locking program, not Taproot signing/key tweaks.
+// Decode Bech32m directly so Bark's P2TR addresses work without an optional ECC runtime.
+function receivingScript(destination: string, network: "mainnet" | "signet") {
+  const chain = network === "mainnet" ? networks.bitcoin : networks.testnet;
+  if (destination.toLowerCase().startsWith(chain.bech32 + "1p")) {
+    const witness = address.fromBech32(destination);
+    if (
+      witness.prefix !== chain.bech32 ||
+      witness.version !== 1 ||
+      witness.data.length !== 32
+    )
+      throw Error("Invalid Taproot receiving address");
+    return Buffer.concat([
+      Buffer.from([0x51, 0x20]),
+      Buffer.from(witness.data),
+    ]);
+  }
+  return Buffer.from(address.toOutputScript(destination, chain));
+}
 export const BARK_VERSION = "0.7.1";
 export class BarkAdapter implements PaymentAdapter {
   private versionChecked = false;
@@ -225,12 +244,7 @@ export class BarkAdapter implements PaymentAdapter {
           txid: replacement,
         });
       for (const c of bitcoin) {
-        const script = Buffer.from(
-          address.toOutputScript(
-            c.destination,
-            this.network === "mainnet" ? networks.bitcoin : networks.testnet,
-          ),
-        );
+        const script = receivingScript(c.destination, this.network);
         tx.decoded.outs.forEach((out, index) => {
           if (out.value > 0n && Buffer.from(out.script).equals(script))
             observations.push({
@@ -300,12 +314,7 @@ export class BarkAdapter implements PaymentAdapter {
         if (parsed.getId() !== tx.txid)
           throw Error("Bark transaction identity mismatch");
         for (const c of bitcoin) {
-          const script = Buffer.from(
-            address.toOutputScript(
-              c.destination,
-              this.network === "mainnet" ? networks.bitcoin : networks.testnet,
-            ),
-          );
+          const script = receivingScript(c.destination, this.network);
           parsed.outs.forEach((out, i) => {
             if (Buffer.from(out.script).equals(script) && out.value > 0n)
               receipts.push({
