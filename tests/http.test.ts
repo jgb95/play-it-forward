@@ -234,3 +234,72 @@ test("rehearsal credits cannot change the event ledger and cookies stay scoped",
     demoStore.close();
   }
 });
+
+test("run management is authenticated, saved replays pin a run and rehearsal cannot spend", async () => {
+  const s = await setup();
+  try {
+    assert.equal((await s.post("/admin/runs", { name: "New" })).status, 401);
+    assert.equal(
+      (await s.post("/admin/withdrawals/send", { id: "x", confirm: "SEND" }))
+        .status,
+      401,
+    );
+    const login = await s.post("/admin/login", { token }),
+      cookie = login.headers.get("set-cookie")!.split(";")[0];
+    await s.post("/admin/simulate", { amount: 123 }, cookie);
+    const old = s.store.state().eventKey;
+    assert.equal(
+      (await s.post("/admin/runs", { name: "Second" }, cookie)).status,
+      200,
+    );
+    assert.equal(s.store.state().total, 0);
+    await s.post("/admin/simulate", { amount: 45 }, cookie);
+    const oldHistory = await (
+      await fetch(s.base + "/api/history?run=" + old)
+    ).json();
+    assert.equal(oldHistory.finalTotal, 123);
+    assert.equal(
+      (await (await fetch(s.base + "/api/history?run=featured")).json())
+        .eventKey,
+      old,
+    );
+    assert.equal(
+      (
+        await s.post(
+          "/admin/runs/feature",
+          { id: s.store.state().eventKey },
+          cookie,
+        )
+      ).status,
+      200,
+    );
+    assert.equal(
+      (await (await fetch(s.base + "/api/history?run=featured")).json())
+        .finalTotal,
+      45,
+    );
+    assert.equal(
+      (
+        await s.post(
+          "/admin/withdrawals/preview",
+          { kind: "ark", destination: "x" },
+          cookie,
+        )
+      ).status,
+      400,
+    );
+    assert.equal(
+      (
+        await s.post(
+          "/admin/withdrawals/send",
+          { id: "x", confirm: "SEND" },
+          cookie,
+        )
+      ).status,
+      400,
+    );
+    assert.equal(s.store.state().total, 45);
+  } finally {
+    await s.close();
+  }
+});

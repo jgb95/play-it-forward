@@ -771,12 +771,14 @@ function Screen({ presenting = false }: { presenting?: boolean }) {
     }
   }
   useEffect(() => {
-    if (!data || initialized.current === data.state.eventKey) return;
+    if (!data) return;
+    const viewKey = data.state.eventKey + ":" + data.state.eventMode;
+    if (initialized.current === viewKey) return;
     setSession(null);
     setDisplay(null);
     setFinished(false);
     setPlaybackMode("live");
-    initialized.current = data.state.eventKey ?? "event";
+    initialized.current = viewKey;
     const q = new URLSearchParams(location.search);
     if (q.has("replay") || data.state.eventMode === "archive")
       void start("replay");
@@ -1821,12 +1823,11 @@ function RunAndWalletControls({
               }
               onClick={() =>
                 void action(async () => {
-                  setReview(
-                    await api("/admin/withdrawals/preview", {
-                      kind,
-                      destination,
-                    }),
-                  );
+                  const quote = await api<any>("/admin/withdrawals/preview", {
+                    kind,
+                    destination,
+                  });
+                  setReview({ ...quote, clientExpires: Date.now() + 60000 });
                   setConfirm("");
                 })
               }
@@ -1860,7 +1861,9 @@ function RunAndWalletControls({
                 <button
                   className="primary"
                   disabled={
-                    busy || confirm !== "SEND" || review.expires < Date.now()
+                    busy ||
+                    confirm !== "SEND" ||
+                    review.clientExpires < Date.now()
                   }
                   onClick={() =>
                     void action(async () => {
