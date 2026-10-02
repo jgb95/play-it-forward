@@ -13,10 +13,15 @@ import type {
   StoryEvent,
   HistoryPage,
 } from "../shared/model.ts";
+import { ContributionFeed, type FeedPage } from "../shared/feed.ts";
 import { progression } from "../shared/model.ts";
 export class Store {
   db: DatabaseSync;
   nextConfig: Config;
+  private feedCache = new Map<
+    string,
+    { cutoff: number; projection: ContributionFeed }
+  >();
   constructor(
     path: string,
     public config: Config,
@@ -429,6 +434,37 @@ export class Store {
       after: events.at(-1)?.id ?? Math.max(after, reset),
       more: rows.length > limit,
       finalTotal: last ? JSON.parse(last.payload).total : 0,
+    };
+  }
+  feed(
+    before = Number.MAX_SAFE_INTEGER,
+    cutoff = this.state().eventId,
+    limit = 50,
+    runId = this.metadata("eventKey")!,
+  ): FeedPage {
+    // Share a rebuildable projection across viewers of the same fixed snapshot.
+    const cached = this.feedCache.get(runId);
+    let projection = cached?.cutoff === cutoff ? cached.projection : undefined;
+    if (!projection) {
+      projection = new ContributionFeed();
+      let page = this.history(0, cutoff, 200, runId);
+      for (;;) {
+        for (const event of page.events) projection.apply(event);
+        if (!page.more) break;
+        page = this.history(page.after, cutoff, 200, runId);
+      }
+      if (this.feedCache.size >= 4 && !this.feedCache.has(runId))
+        this.feedCache.delete(this.feedCache.keys().next().value!);
+      this.feedCache.set(runId, { cutoff, projection });
+    }
+    const rows = projection.rows(before, limit + 1);
+    const entries = rows.slice(0, limit);
+    return {
+      eventKey: runId,
+      cutoff,
+      entries,
+      more: rows.length > limit,
+      before: entries.at(-1)?.firstId ?? before,
     };
   }
   close() {

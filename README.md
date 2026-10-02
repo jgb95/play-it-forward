@@ -146,3 +146,12 @@ Withdrawal attempts persist independently of donation events. A private SQLite b
 Authenticated endpoints: GET `/api/admin/wallet`; POST `/api/admin/withdrawals/preview` (`destination`); POST `/api/admin/withdrawals/send` (`id`, `confirm: "SEND"`); POST `/api/admin/runs` (`name`); POST `/api/admin/runs/feature` (`id`). Run summaries and recent withdrawals are included in admin health.
 
 Live Admin shows event status, presentation, saved runs and a whole-wallet withdrawal flow. Simulation donations and movie scheduling are shown only in demo/rehearsal; the live page links to the isolated rehearsal. A sweep skips empty balances. Pending wallet operations must settle first. A changed second-leg estimate leaves the first transaction recorded and allows a fresh review of the remaining balance; uncertain results block further sweeps until inspected.
+
+
+### Contribution activity and presenting
+
+The homepage has a primary **Donate sats** action (or **Watch replay** when contributions are closed). The contribution feed shows verified receipts and pending Bitcoin outputs, with payment methods and provider-accepted Mempool Express badges. Pending sats and acceleration fees stay outside the raised total. On phones, expand **Show contributions** to view activity.
+
+On `/screen`, **Fullscreen** removes every interactive control; press **Escape** to restore the toolbar. The complete canvas fits the available space. Sound remains off by default. Historical replay reveals contributions in playback order, independently for each visitor.
+
+`GET /api/feed?run=<run-id>&before=<first-event-id>&cutoff=<event-id>&limit=50` returns a public display projection of the durable journal, newest first. Omit cursors to capture the latest snapshot; use its `eventKey`, `before`, and `cutoff` for stable older pages. `run=featured` selects the featured recorded run. The maximum page size is 100. Entries exclude contribution destinations, invoices, and private request details. This endpoint does not modify the ledger; existing SSE updates trigger activity refreshes.

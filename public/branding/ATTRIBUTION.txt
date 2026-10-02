@@ -1,2 +1,5 @@
 Mempool logo: https://github.com/mempool/mempool/blob/master/frontend/src/resources/mempool-space-logo-horizontal.png
 Used to identify the actual Mempool Accelerator integration. Mempool branding belongs to its owners.
+
+Mempool Accelerator sparkles: https://github.com/mempool/mempool/blob/master/frontend/src/resources/mempool-accelerator-sparkles-light.svg
+Used only on provider-accepted Express contributions.

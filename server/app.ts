@@ -269,6 +269,31 @@ export function createApp(
       res.status(404).json({ error: "Run not found" });
     }
   });
+  app.get("/api/feed", (req, res) => {
+    const before = Number(req.query.before ?? Number.MAX_SAFE_INTEGER);
+    const cutoff = Number(req.query.cutoff ?? state().eventId);
+    const limit = Number(req.query.limit ?? 50);
+    if (
+      ![before, cutoff, limit].every(Number.isSafeInteger) ||
+      before < 0 ||
+      cutoff < 0 ||
+      cutoff > state().eventId ||
+      limit < 1 ||
+      limit > 100
+    ) {
+      res.status(400).json({ error: "Invalid feed cursor" });
+      return;
+    }
+    const run =
+      req.query.run === "featured"
+        ? (store.metadata("featuredRun") ?? state().eventKey)
+        : String(req.query.run ?? state().eventKey);
+    try {
+      res.json(store.feed(before, cutoff, limit, run));
+    } catch {
+      res.status(404).json({ error: "Run not found" });
+    }
+  });
   app.get("/api/events", (req, res) => {
     if (clients.size >= 150) {
       res.status(503).end();

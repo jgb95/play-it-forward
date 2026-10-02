@@ -177,7 +177,8 @@ h1 em {
 }
 .adventure {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 265px;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  align-items: start;
   border: 1px solid var(--line);
   border-radius: 5px;
   overflow: hidden;
@@ -189,11 +190,17 @@ h1 em {
   min-width: 0;
   overflow: hidden;
   display: flex;
-  align-items: flex-end;
+  align-items: center;
+  justify-content: center;
+  background: #0b1418;
+  align-self: stretch;
 }
 .scene canvas {
   width: 100%;
-  height: auto;
+  height: 100%;
+  min-height: 0;
+  object-fit: contain;
+  aspect-ratio: 640 / 300;
   image-rendering: pixelated;
   display: block;
 }
@@ -234,34 +241,14 @@ h1 em {
   color: #e0dcc6;
   margin: 0;
 }
-.scene-bottom {
-  position: absolute;
-  bottom: 16px;
-  left: 24px;
-  right: 24px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  z-index: 1;
-  color: #d7dfc4;
-  font-size: 8px;
-}
-.inventory {
-  display: flex;
-  gap: 6px;
-}
-.inventory > span {
-  background: #14322ba3;
-  border: 1px solid #d4c39433;
-  padding: 5px 7px;
-  font-size: 7px;
-}
 .pool {
   background: var(--surface);
-  padding: 27px 24px;
+  padding: 24px;
+  min-width: 0;
+  gap: 16px;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
+  justify-content: flex-start;
 }
 .pool .eyebrow {
   font-size: 8px;
@@ -280,7 +267,7 @@ h1 em {
   color: var(--muted);
   letter-spacing: 0;
   display: block;
-  margin: 7px 0 20px;
+  margin: 6px 0 0;
 }
 .chapter-progress {
   border-top: 1px solid var(--line);
@@ -324,11 +311,11 @@ progress::-moz-progress-bar {
   display: flex;
   align-items: center;
   gap: 9px;
-  margin: 18px -6px 11px;
+  margin: 0;
 }
 .qr-panel img {
-  width: 108px;
-  height: 108px;
+  width: 136px;
+  height: 136px;
 }
 .qr-panel h3 {
   font-size: 13px;
@@ -342,24 +329,21 @@ progress::-moz-progress-bar {
   margin: 0;
 }
 .donate-link {
-  border-top: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
-  font-family: "IBM Plex Mono", monospace;
-  font-size: 9px;
-  padding: 13px 0;
-  letter-spacing: 1px;
   display: flex;
+  align-items: center;
   justify-content: space-between;
-}
-.donate-link span {
-  font-size: 14px;
-  color: var(--orange);
+  background: var(--orange);
+  color: #182019;
+  padding: 13px 16px;
+  font-size: 15px;
+  font-weight: 700;
+  border-radius: 8px;
 }
 .pool-footnote {
   font-size: 8px;
   color: var(--muted);
   line-height: 1.6;
-  margin: 12px 0 0;
+  margin: 0;
 }
 .journey {
   padding: 23px 0 25px;
@@ -797,13 +781,6 @@ footer button {
 .payment-note {
   margin-bottom: 20px;
 }
-.screen .scene {
-  min-height: 350px;
-}
-.screen .scene canvas {
-  min-height: 350px;
-  object-fit: cover;
-}
 @keyframes arrive {
   from {
     opacity: 0;
@@ -812,241 +789,6 @@ footer button {
   to {
     opacity: 1;
     transform: translate(-50%, 0);
-  }
-}
-@media (min-width: 1500px) {
-  .screen .scene {
-    min-height: 420px;
-  }
-  .screen .scene canvas {
-    min-height: 420px;
-  }
-  .pool {
-    padding: 30px;
-  }
-  .total {
-    font-size: 49px;
-  }
-  .qr-panel img {
-    width: 136px;
-    height: 136px;
-  }
-  .qr-panel h3 {
-    font-size: 14px;
-  }
-  .adventure {
-    grid-template-columns: minmax(0, 1fr) 300px;
-  }
-}
-@media (max-width: 1000px) {
-  .screen {
-    padding: 0 3%;
-  }
-  .header {
-    height: 70px;
-    gap: 10px;
-  }
-  .wordmark {
-    font-size: 20px;
-  }
-  .event-name {
-    font-size: 8px;
-  }
-  .status {
-    font-size: 7px;
-  }
-  .intro {
-    padding: 20px 0;
-  }
-  .intro h1 {
-    font-size: 44px;
-  }
-  .intro-note {
-    padding: 0;
-  }
-  .intro-note p {
-    font-size: 11px;
-  }
-  .adventure {
-    grid-template-columns: minmax(0, 1fr) 225px;
-  }
-  .pool {
-    padding: 22px 18px;
-  }
-  .total {
-    font-size: 34px;
-  }
-  .scene-title {
-    left: 20px;
-    top: 23px;
-  }
-  .scene-title h2 {
-    font-size: 25px;
-  }
-  .scene-title p {
-    font-size: 10px;
-  }
-  .qr-panel {
-    display: block;
-    text-align: center;
-    margin: 12px 0;
-  }
-  .qr-panel img {
-    width: 90px;
-    height: 90px;
-  }
-  .qr-panel h3 {
-    margin-top: 3px;
-  }
-  .qr-panel p {
-    display: none;
-  }
-  .chapter-progress > div {
-    font-size: 8px;
-  }
-  .pool-footnote {
-    font-size: 7px;
-  }
-  .scene-bottom {
-    left: 16px;
-    right: 16px;
-  }
-  .location-pin {
-    display: none;
-  }
-  .intro .eyebrow {
-    font-size: 8px;
-  }
-  .journey {
-    padding: 19px 0;
-  }
-  .screen .scene,
-  .screen .scene canvas {
-    min-height: 340px;
-  }
-}
-@media (max-width: 700px) {
-  .screen .header .event-name {
-    display: none;
-  }
-  .screen .header .status {
-    font-size: 7px;
-  }
-  .intro-note {
-    display: none;
-  }
-  .intro h1 {
-    font-size: 43px;
-  }
-  .adventure {
-    display: flex;
-    flex-direction: column;
-  }
-  .screen .scene,
-  .screen .scene canvas {
-    min-height: 0;
-  }
-  .scene-title {
-    top: 18px;
-    left: 17px;
-  }
-  .scene-title h2 {
-    font-size: 21px;
-    margin-top: 5px;
-  }
-  .scene-title p {
-    font-size: 8px;
-  }
-  .scene-bottom {
-    bottom: 10px;
-  }
-  .pool {
-    padding: 20px;
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 0 18px;
-  }
-  .pool .eyebrow {
-    grid-column: 1/-1;
-  }
-  .total {
-    font-size: 33px;
-  }
-  .total > span {
-    margin-bottom: 12px;
-  }
-  .chapter-progress {
-    border: 0;
-    padding: 8px 0;
-  }
-  .qr-panel {
-    display: none;
-  }
-  .donate-link {
-    grid-column: 1/-1;
-  }
-  .pool-footnote {
-    grid-column: 1/-1;
-  }
-  .stops {
-    gap: 4px;
-  }
-  .stop {
-    font-size: 7px;
-    text-align: center;
-  }
-  .stop-dot {
-    width: 24px;
-    height: 24px;
-    font-size: 8px;
-  }
-  .stops:before {
-    top: 12px;
-  }
-  .journey-heading .eyebrow {
-    font-size: 7px;
-  }
-  .journey-heading > span:last-child {
-    font-size: 7px;
-  }
-  footer {
-    font-size: 7px;
-    gap: 8px;
-  }
-  footer div {
-    gap: 10px;
-  }
-  .celebration {
-    bottom: 30px;
-    padding: 10px 13px;
-  }
-  .celebration b {
-    font-size: 16px;
-  }
-  .celebration small {
-    font-size: 8px;
-  }
-  .admin .header .status,
-  .admin .header .event-name {
-    display: none;
-  }
-  .admin-grid {
-    grid-template-columns: 1fr;
-  }
-  .admin {
-    padding: 0 20px 30px;
-  }
-  .admin h1 {
-    font-size: 37px;
-  }
-  .mobile {
-    padding: 0 20px 30px;
-  }
-  .donation-card {
-    padding: 23px;
-  }
-  .mobile-heading h1 {
-    font-size: 48px;
   }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -1060,72 +802,6 @@ footer button {
   margin: 0 0 12px;
   background: var(--track);
 }
-@media (min-width: 701px) and (max-height: 950px) {
-  .screen .header {
-    height: 58px;
-  }
-  .screen .intro {
-    padding: 16px 0;
-  }
-  .screen .intro h1 {
-    font-size: 38px;
-  }
-  .screen .intro-note p {
-    font-size: 11px;
-  }
-  .screen .intro .eyebrow {
-    font-size: 8px;
-    margin-bottom: 8px;
-  }
-  .screen .adventure {
-    height: calc(100vh - 360px);
-    min-height: 330px;
-  }
-  .screen .scene,
-  .screen .scene canvas {
-    min-height: 0;
-  }
-  .screen .scene canvas {
-    height: 100%;
-    width: 100%;
-    object-fit: cover;
-  }
-  .screen .pool {
-    padding: 18px 20px;
-  }
-  .screen .total {
-    font-size: 32px;
-  }
-  .screen .total > span {
-    margin: 4px 0 10px;
-  }
-  .screen .chapter-progress {
-    padding-top: 12px;
-  }
-  .screen .qr-panel {
-    margin: 8px 0;
-  }
-  .screen .qr-panel img {
-    width: 92px;
-    height: 92px;
-  }
-  .screen .pool-footnote {
-    margin: 8px 0 0;
-  }
-  .screen .journey {
-    padding: 16px 0;
-  }
-  .screen footer {
-    padding: 12px 0;
-  }
-  .screen .scene-title {
-    top: 20px;
-  }
-  .screen .scene-title h2 {
-    font-size: 25px;
-  }
-}
-
 /* Shared theme controls and overview entry point. */
 .theme-toggle {
   flex-shrink: 0;
@@ -1135,16 +811,6 @@ footer button {
   color: var(--ink);
   padding: 8px 10px;
   font-size: 11px;
-}
-.present-link {
-  float: right;
-  margin-top: 18px;
-  padding: 10px 14px;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  font-size: 12px;
-  color: var(--accent-text);
 }
 :root[data-theme="dark"] .connection-note {
   background: #352c20;
@@ -1163,369 +829,6 @@ footer button {
   background: #fffdf6;
   border-radius: 4px;
 }
-/* Always fit the complete world: progress endpoints must never be cropped. */
-.screen .scene {
-  min-height: 0;
-  align-items: center;
-  justify-content: center;
-}
-.screen .scene canvas {
-  min-height: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-}
-.overview .scene {
-  min-height: 330px;
-}
-.overview .scene canvas {
-  aspect-ratio: 640 / 300;
-}
-
-/* Presentation uses a fixed viewport, persistent HUD, and a quiet operator rail. */
-.screen.presentation {
-  width: 100%;
-  max-width: none;
-  height: 100dvh;
-  min-height: 0;
-  padding: 0;
-  overflow: hidden;
-  display: grid;
-  grid-template-rows: 58px minmax(0, 1fr) 124px 38px;
-}
-.presentation .header {
-  height: 58px;
-  padding: 0 24px;
-  gap: 18px;
-}
-.presentation .header .wordmark {
-  font-size: 20px;
-}
-.presentation .intro {
-  display: none;
-}
-.presentation .adventure {
-  position: relative;
-  display: block;
-  min-height: 0;
-  height: 100%;
-  border: 0;
-  border-radius: 0;
-  box-shadow: none;
-  background: #0d2025;
-}
-.presentation .scene {
-  width: 100%;
-  height: 100%;
-  min-height: 0;
-  background: #0d2025;
-}
-.presentation .scene canvas {
-  width: 100%;
-  height: 100%;
-  min-height: 0;
-  object-fit: contain;
-}
-.presentation .scene:after {
-  display: none;
-}
-.presentation .scene-title {
-  top: 16px;
-  left: 24px;
-  right: auto;
-  z-index: 2;
-  max-width: calc(100% - 480px);
-  padding: 12px 16px;
-  border-radius: 8px;
-  background: #0b1418d9;
-  color: #fff6da;
-}
-.presentation .scene-title h2 {
-  font-size: clamp(22px, 2.5vw, 38px);
-  margin: 7px 0;
-}
-.presentation .scene-title p {
-  font-size: 12px;
-  margin: 0;
-}
-.presentation .scene-bottom {
-  left: 24px;
-  bottom: 12px;
-  right: 24px;
-  font-size: 9px;
-}
-.presentation .pool {
-  position: absolute;
-  top: 16px;
-  right: 24px;
-  z-index: 3;
-  width: 408px;
-  padding: 14px 16px;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 136px;
-  gap: 5px 16px;
-  background: #0b1418ed;
-  color: #f0eddf;
-  border: 1px solid #314449;
-  border-radius: 8px;
-}
-.presentation .pool .eyebrow {
-  grid-column: 1;
-  font-size: 9px;
-  line-height: 1.5;
-  margin: 0;
-  color: #a4b5b4;
-}
-.presentation .total {
-  grid-column: 1;
-  font-size: clamp(30px, 3vw, 46px);
-  margin: 0;
-  line-height: 1.2;
-}
-.presentation .total span {
-  display: block;
-  font-size: 13px;
-  color: #a4b5b4;
-}
-.presentation .qr-panel {
-  grid-column: 2;
-  grid-row: 1 / span 3;
-  display: block;
-  padding: 0;
-  margin: 0;
-  border: 0;
-}
-.presentation .qr-panel img {
-  width: 136px;
-  height: 136px;
-  display: block;
-}
-.presentation .qr-panel div {
-  display: none;
-}
-.presentation .pool-footnote {
-  grid-column: 1;
-  font-size: 10px;
-  line-height: 1.5;
-  margin: 0;
-  color: #a4b5b4;
-}
-.presentation .pool-footnote br,
-.presentation .pool .chapter-progress,
-.presentation .donate-link {
-  display: none;
-}
-.presentation .journey {
-  padding: 10px 24px 8px;
-  margin: 0;
-  border-top: 1px solid var(--line);
-}
-.presentation .presentation-progress {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  margin-bottom: 10px;
-  font-size: 12px;
-}
-.presentation-progress progress {
-  width: min(320px, 35%);
-  height: 5px;
-}
-.presentation .journey-heading {
-  margin: 0 0 5px;
-}
-.presentation .stops {
-  margin-top: 8px;
-}
-.presentation .stop {
-  gap: 8px;
-}
-.presentation .stop-dot {
-  width: 20px;
-  height: 20px;
-  font-size: 8px;
-}
-.presentation .stop > span:last-child {
-  font-size: 10px;
-}
-.presentation footer {
-  margin: 0;
-  padding: 0 24px;
-  border-top: 1px solid var(--line);
-  font-size: 9px;
-}
-.presentation footer button,
-.presentation footer a {
-  font-size: 10px;
-}
-.presentation.controls-hidden footer > div,
-.presentation.controls-hidden .theme-toggle {
-  opacity: 0;
-  pointer-events: none;
-}
-.presentation.controls-hidden footer > div:focus-within,
-.presentation.controls-hidden .theme-toggle:focus {
-  opacity: 1;
-  pointer-events: auto;
-}
-.presentation .celebration {
-  bottom: 44px;
-  z-index: 4;
-}
-@media (min-width: 1500px) {
-  .presentation .pool {
-    width: 462px;
-    grid-template-columns: minmax(0, 1fr) 160px;
-  }
-  .presentation .qr-panel img {
-    width: 160px;
-    height: 160px;
-  }
-  .presentation .scene-title {
-    max-width: calc(100% - 520px);
-  }
-}
-@media (max-width: 800px) {
-  .header {
-    flex-wrap: wrap;
-  }
-  .header .event-name {
-    display: none;
-  }
-  .theme-toggle {
-    padding: 6px 8px;
-    font-size: 10px;
-  }
-  .presentation .header {
-    padding: 0 12px;
-    gap: 8px;
-    flex-wrap: nowrap;
-  }
-  .presentation .header .wordmark {
-    font-size: 16px;
-  }
-  .presentation .header .status {
-    font-size: 7px;
-  }
-  .screen.presentation {
-    grid-template-rows: 58px minmax(0, 1fr) 136px 54px;
-  }
-  .presentation .scene-title {
-    top: 12px;
-    left: 12px;
-    max-width: calc(100% - 270px);
-    padding: 8px;
-  }
-  .presentation .scene-title h2 {
-    font-size: 19px;
-  }
-  .presentation .scene-title p {
-    display: none;
-  }
-  .presentation .pool {
-    top: 12px;
-    right: 12px;
-    width: 238px;
-    grid-template-columns: minmax(0, 1fr) 96px;
-    gap: 5px 8px;
-    padding: 10px;
-  }
-  .presentation .qr-panel img {
-    width: 96px;
-    height: 96px;
-  }
-  .presentation .total {
-    font-size: 26px;
-  }
-  .presentation .pool .eyebrow {
-    font-size: 7px;
-    letter-spacing: 0.8px;
-  }
-  .presentation .pool-footnote {
-    font-size: 8px;
-  }
-  .presentation .journey,
-  .presentation footer {
-    padding-left: 12px;
-    padding-right: 12px;
-  }
-  .presentation .stop > span:last-child {
-    font-size: 8px;
-  }
-  .presentation .stop {
-    flex-direction: column;
-    gap: 3px;
-  }
-  .presentation .scene-bottom {
-    left: 12px;
-    right: 12px;
-  }
-  .presentation .scene-bottom .location-pin {
-    display: none;
-  }
-  .presentation footer > span {
-    display: none;
-  }
-  .presentation footer > div {
-    display: flex;
-    gap: 12px;
-    flex-wrap: wrap;
-  }
-}
-@media (max-width: 480px) {
-  .presentation .scene-title {
-    top: 134px;
-    max-width: calc(100% - 24px);
-  }
-  .presentation .scene-title .chapter-label {
-    font-size: 8px;
-  }
-  .presentation .pool {
-    left: 12px;
-    right: 12px;
-    width: auto;
-  }
-  .presentation .scene-bottom {
-    display: none;
-  }
-  .presentation .presentation-progress {
-    font-size: 10px;
-  }
-  .overview .scene {
-    min-height: 260px;
-  }
-  .present-link {
-    float: none;
-    display: block;
-    text-align: center;
-  }
-}
-
-input::placeholder {
-  color: var(--muted);
-  opacity: 0.8;
-}
-@media (min-width: 1500px) {
-  .presentation .header .status {
-    font-size: 11px;
-  }
-  .presentation .pool .eyebrow {
-    font-size: 11px;
-  }
-  .presentation .pool-footnote {
-    font-size: 12px;
-  }
-  .presentation .presentation-progress {
-    font-size: 15px;
-  }
-  .presentation .stop > span:last-child {
-    font-size: 12px;
-  }
-  .presentation .journey-heading > span {
-    font-size: 11px;
-  }
-}
-
 .admin-card select {
   width: 100%;
   padding: 12px;
@@ -1552,49 +855,7 @@ input::placeholder {
 .mode-card {
   margin-bottom: 24px;
 }
-.scene-title .queue-note {
-  color: #ffd28f;
-  font-size: 11px;
-  margin-top: 8px;
-}
-.celebration {
-  border: 1px solid #d4a66b66;
-  box-shadow: 0 0 40px #ffc77718;
-  padding: 18px 24px;
-}
-.celebration b {
-  font-size: 22px;
-}
-.presentation .celebration {
-  bottom: 38px;
-}
-
 /* Story, playback and payment status stay outside the walking corridor. */
-.departures {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.6rem;
-  font-size: 0.72rem;
-  padding: 0.65rem;
-  background: #101b26ee;
-  border: 1px solid #42616d;
-  border-radius: 8px;
-  margin: 0.65rem 0;
-}
-.departures img,
-.express-checkout img {
-  width: 110px;
-  object-fit: contain;
-  align-self: center;
-}
-.departures div {
-  display: grid;
-  gap: 0.15rem;
-}
-.departures small {
-  width: 100%;
-  opacity: 0.7;
-}
 .playback-label,
 .story-caption {
   color: #ffd58b !important;
@@ -1612,7 +873,6 @@ input::placeholder {
   font-size: 0.8rem;
 }
 .playback-controls button,
-.pending-control button,
 .express-checkout button {
   background: var(--surface, #17262b);
   color: var(--ink);
@@ -1626,14 +886,6 @@ input::placeholder {
   color: white;
   padding: 0.3rem;
 }
-.pending-control {
-  padding: 0.7rem;
-  border: 1px solid #527078;
-  margin: 0.5rem 0;
-}
-.pending-control button {
-  margin: 0.2rem;
-}
 .express-checkout {
   border: 1px solid #527078;
   padding: 1rem;
@@ -1646,94 +898,6 @@ input::placeholder {
 .express-checkout a {
   overflow-wrap: anywhere;
 }
-.presentation .departures {
-  font-size: 0.65rem;
-  max-width: 320px;
-}
-.presentation .departures img {
-  width: 85px;
-}
-.presentation .playback-controls {
-  position: fixed;
-  bottom: 135px;
-  left: 20px;
-  z-index: 5;
-  background: #101b26dc;
-  border-radius: 8px;
-  max-width: 65vw;
-}
-.presentation.controls-hidden .playback-controls {
-  opacity: 0;
-  pointer-events: none;
-}
-.presentation .scene-title .story-caption {
-  max-width: 55vw;
-}
-@media (max-width: 650px) {
-  .departures {
-    font-size: 0.7rem;
-  }
-  .playback-controls {
-    font-size: 0.7rem;
-  }
-  .presentation .playback-controls {
-    bottom: 160px;
-  }
-}
-
-.presentation .departures {
-  position: fixed;
-  top: 76px;
-  left: calc(50% - 145px);
-  width: 290px;
-  margin: 0;
-  z-index: 3;
-  max-width: 25vw;
-}
-.presentation .departures div {
-  font-size: 0.65rem;
-}
-.presentation .departures small {
-  font-size: 0.6rem;
-}
-@media (max-width: 900px) {
-  .presentation .departures {
-    top: 185px;
-    left: 20px;
-    max-width: 220px;
-  }
-}
-
-.pending-particles {
-  color: #ffbf7e;
-  display: flex;
-  gap: 0.3rem;
-  height: 0.75rem;
-}
-.pending-particles i {
-  font-style: normal;
-  animation: pending-glow 2.8s ease-in-out infinite alternate;
-}
-.pending-particles.express {
-  color: #af94ff;
-}
-@keyframes pending-glow {
-  to {
-    opacity: 0.4;
-    transform: translateY(-2px);
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .pending-particles i {
-    animation: none;
-  }
-}
-
-.departures,
-.presentation .playback-controls {
-  color: #f0eddf;
-}
-
 .run-row,
 .withdraw-review {
   border-top: 1px solid var(--line);
@@ -1768,4 +932,771 @@ input::placeholder {
 }
 .admin-grid > .message {
   grid-column: 1 / -1;
+}
+
+/* One layout per surface: no fixed-height overview or canvas cropping. */
+.overview {
+  max-width: 1600px;
+  padding-bottom: 24px;
+}
+.intro {
+  gap: 32px;
+  padding: 36px 0;
+}
+.intro h1 {
+  font-size: clamp(38px, 4.5vw, 64px);
+}
+.intro-actions {
+  width: 320px;
+  flex-shrink: 0;
+}
+.intro-actions p {
+  color: var(--muted);
+  line-height: 1.6;
+  font-size: 14px;
+  margin: 0 0 16px;
+}
+.intro-actions .primary {
+  margin: 0;
+}
+.present-link {
+  display: block;
+  text-align: center;
+  padding: 12px;
+  font-size: 13px;
+  color: var(--accent-text);
+}
+.overview .scene {
+  min-height: 430px;
+}
+.recorded-total {
+  color: var(--muted);
+  font-size: 12px;
+  margin: 0;
+}
+.pool .eyebrow {
+  margin: 0;
+  line-height: 1.6;
+}
+.pool-footnote {
+  font-size: 11px;
+}
+.scene-title {
+  max-width: calc(100% - 48px);
+  background: #0b1418c9;
+  border-radius: 8px;
+  padding: 14px 18px;
+}
+.scene-title p {
+  max-width: 42ch;
+}
+.scene-title .story-caption {
+  margin-top: 8px;
+}
+.celebration {
+  bottom: 18px;
+  max-width: calc(100% - 32px);
+  padding: 14px 20px;
+  border: 1px solid #d4a66b66;
+  box-shadow: 0 0 40px #ffc77718;
+}
+.activity-feed {
+  border-top: 1px solid var(--line);
+  padding-top: 16px;
+  min-height: 0;
+}
+.feed-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.feed-heading h3 {
+  font-size: 14px;
+  margin: 0;
+  font-weight: 600;
+}
+.feed-heading > span {
+  font-size: 10px;
+  color: var(--muted);
+}
+.feed-pending {
+  font-size: 11px;
+  color: var(--orange);
+  line-height: 1.5;
+  margin: 8px 0;
+}
+.feed-list {
+  max-height: 230px;
+  overflow: auto;
+  scrollbar-width: thin;
+  overscroll-behavior: contain;
+}
+.feed-empty {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+  margin: 16px 0;
+}
+.feed-row {
+  display: flex;
+  gap: 9px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+.feed-row:last-child {
+  border-bottom: 0;
+}
+.feed-avatar {
+  background: var(--surface-soft);
+  color: var(--orange);
+  border-radius: 50%;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  display: grid;
+  place-items: center;
+  font-size: 16px;
+}
+.feed-content {
+  flex: 1;
+  min-width: 0;
+}
+.feed-line {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+}
+.feed-line b {
+  overflow-wrap: anywhere;
+  font-weight: 500;
+}
+.feed-line strong {
+  color: var(--orange);
+  white-space: nowrap;
+  font-weight: 600;
+}
+.feed-line small {
+  font-size: 10px;
+  font-weight: 400;
+}
+.feed-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px 8px;
+  color: var(--muted);
+  font-size: 10px;
+  margin-top: 4px;
+}
+.feed-row.pending .feed-meta {
+  color: var(--orange);
+}
+.feed-row.replaced,
+.feed-row.dropped {
+  opacity: 0.65;
+}
+.express-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #9d89db66;
+  border-radius: 4px;
+  color: #d9c9ff;
+  background: #322841;
+  padding: 3px 5px;
+  margin-top: 6px;
+  font-size: 10px;
+}
+.express-badge img {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+}
+.feed-explorer {
+  display: block;
+  font-size: 10px;
+  margin-top: 5px;
+  color: var(--accent-text);
+}
+.feed-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+.feed-actions button,
+.feed-mobile-toggle {
+  border: 0;
+  background: transparent;
+  color: var(--accent-text);
+  font-size: 11px;
+  padding: 5px 0;
+}
+.feed-mobile-toggle {
+  display: none;
+}
+.operator-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 14px 0;
+  border-top: 1px solid var(--line);
+}
+.operator-toolbar footer {
+  padding: 0;
+  border: 0;
+  margin: 0;
+}
+.playback-controls {
+  padding: 0;
+  gap: 10px;
+  font-size: 11px;
+}
+.playback-controls label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.playback-controls select {
+  background: var(--input);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+}
+footer div {
+  flex-wrap: wrap;
+}
+
+.screen.presentation {
+  height: 100dvh;
+  max-width: none;
+  width: 100%;
+  min-height: 0;
+  padding: 0;
+  display: grid;
+  grid-template-rows: 58px minmax(0, 1fr) 98px auto;
+  overflow: hidden;
+}
+.presentation .header {
+  height: 58px;
+  padding: 0 24px;
+}
+.presentation .intro {
+  display: none;
+}
+.presentation .adventure {
+  grid-template-columns: minmax(0, 1fr) 300px;
+  align-items: stretch;
+  border: 0;
+  border-radius: 0;
+  min-height: 0;
+}
+.presentation .scene {
+  min-height: 0;
+  height: 100%;
+}
+.presentation .scene canvas {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.presentation .scene:after {
+  display: none;
+}
+.presentation .scene-title {
+  top: 16px;
+  left: 20px;
+  max-width: calc(100% - 40px);
+}
+.presentation .scene-title h2 {
+  font-size: clamp(24px, 2vw, 36px);
+  margin: 6px 0;
+}
+.presentation .scene-title p {
+  font-size: 11px;
+}
+.presentation .pool {
+  padding: 20px;
+  gap: 12px;
+  min-height: 0;
+  overflow: hidden;
+  border-left: 1px solid var(--line);
+}
+.presentation .total {
+  font-size: clamp(32px, 3vw, 44px);
+}
+.presentation .pool .eyebrow {
+  font-size: 10px;
+}
+.presentation .qr-panel {
+  gap: 12px;
+}
+.presentation .qr-panel img {
+  width: 128px;
+  height: 128px;
+}
+.presentation .qr-panel h3 {
+  font-size: 12px;
+}
+.presentation .qr-panel p {
+  font-size: 10px;
+}
+.presentation .pool .chapter-progress,
+.presentation .donate-link {
+  display: none;
+}
+.presentation .activity-feed {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.presentation .feed-body {
+  min-height: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+.presentation .feed-list {
+  min-height: 0;
+  max-height: none;
+  flex: 1;
+}
+.presentation .feed-actions {
+  flex-shrink: 0;
+}
+.presentation .pool-footnote {
+  font-size: 10px;
+}
+.presentation .journey {
+  margin: 0;
+  padding: 10px 24px;
+  border-top: 1px solid var(--line);
+}
+.presentation-progress {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+.presentation-progress progress {
+  width: min(320px, 35%);
+  height: 5px;
+  margin: 0;
+}
+.presentation .journey-heading {
+  margin: 0 0 5px;
+}
+.presentation .journey-heading .eyebrow {
+  display: none;
+}
+.presentation .overall-progress {
+  margin: 0;
+  height: 3px;
+}
+.presentation .stops {
+  margin-top: 8px;
+}
+.presentation .stop {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  font-size: 10px;
+}
+.presentation .stop-dot {
+  width: 20px;
+  height: 20px;
+  font-size: 8px;
+}
+.presentation .stops:before {
+  top: 10px;
+}
+.presentation .stop > span:last-child {
+  background: var(--page);
+}
+.presentation .operator-toolbar {
+  padding: 9px 24px;
+  min-height: 46px;
+}
+.presentation.is-fullscreen {
+  grid-template-rows: minmax(0, 1fr) 98px;
+}
+.presentation.is-fullscreen .scene-title .chapter-label {
+  display: none;
+}
+.presentation.is-fullscreen .qr-panel p {
+  display: none;
+}
+.presentation.is-fullscreen .feed-list {
+  overflow: hidden;
+}
+.presentation.is-fullscreen .pool {
+  padding-top: 24px;
+}
+.connection-note {
+  z-index: 10;
+}
+
+.admin-card,
+.donation-card {
+  border-radius: 12px;
+}
+.admin-card h2 {
+  margin: 4px 0 16px;
+  font-size: 25px;
+}
+.admin-card .eyebrow {
+  margin-bottom: 8px;
+}
+.admin-runs-wallet {
+  display: flex;
+  flex-direction: column;
+}
+.admin-runs-wallet > .admin-card {
+  width: 100%;
+}
+.admin-runs-wallet .run-row {
+  width: 100%;
+}
+.express-checkout {
+  background: var(--surface-soft);
+  border-color: var(--line);
+}
+.express-checkout > img {
+  width: 110px;
+}
+.express-checkout img[alt="Scan to contribute"] {
+  width: 224px;
+  max-width: 100%;
+  height: auto;
+  background: white;
+}
+.message {
+  background: var(--surface-soft);
+  color: var(--ink) !important;
+  border-color: var(--line);
+  border-radius: 8px;
+}
+input,
+select {
+  color: var(--ink);
+}
+input::placeholder {
+  color: var(--muted);
+}
+.primary {
+  border-radius: 8px;
+}
+
+@media (min-width: 1500px) {
+  .presentation .adventure {
+    grid-template-columns: minmax(0, 1fr) 350px;
+  }
+  .presentation .pool {
+    padding: 28px;
+    gap: 18px;
+  }
+  .presentation .qr-panel img {
+    width: 152px;
+    height: 152px;
+  }
+  .presentation .feed-line {
+    font-size: 14px;
+  }
+  .presentation .feed-meta,
+  .presentation .feed-heading > span {
+    font-size: 12px;
+  }
+  .presentation .feed-row {
+    padding: 16px 0;
+  }
+  .presentation .journey {
+    padding-left: 32px;
+    padding-right: 32px;
+  }
+}
+@media (max-width: 1000px) {
+  .header {
+    height: 72px;
+    gap: 12px;
+  }
+  .header .event-name {
+    display: none;
+  }
+  .screen {
+    padding-left: 3%;
+    padding-right: 3%;
+  }
+  .intro h1 {
+    font-size: 42px;
+  }
+  .intro-actions {
+    width: 280px;
+  }
+  .adventure {
+    grid-template-columns: minmax(0, 1fr) 280px;
+  }
+  .pool {
+    padding: 20px;
+  }
+  .scene-title {
+    top: 18px;
+    left: 16px;
+    padding: 10px 12px;
+  }
+  .scene-title h2 {
+    font-size: 24px;
+  }
+  .scene-title p:not(.playback-label):not(.story-caption) {
+    display: none;
+  }
+}
+@media (max-width: 700px) {
+  .screen {
+    padding: 0 20px 24px;
+  }
+  .header {
+    gap: 8px;
+    flex-wrap: wrap;
+    height: auto;
+    min-height: 72px;
+    padding: 12px 0;
+  }
+  .wordmark {
+    font-size: 19px;
+  }
+  .brand-mark {
+    width: 25px;
+    height: 25px;
+    margin-right: 5px;
+    font-size: 22px;
+  }
+  .status {
+    font-size: 7px;
+    letter-spacing: 0;
+  }
+  .theme-toggle {
+    font-size: 10px;
+    padding: 7px;
+  }
+  .intro {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 20px;
+    padding: 28px 0;
+  }
+  .intro h1 {
+    font-size: 46px;
+  }
+  .intro .eyebrow {
+    font-size: 8px;
+    line-height: 1.8;
+  }
+  .intro-actions {
+    width: auto;
+  }
+  .intro-actions p {
+    margin-bottom: 12px;
+  }
+  .adventure {
+    display: flex;
+    flex-direction: column;
+  }
+  .overview .scene {
+    min-height: 0;
+    height: auto;
+    width: 100%;
+    aspect-ratio: 640 / 300;
+  }
+  .scene-title {
+    top: 10px;
+    left: 10px;
+    padding: 7px 10px;
+    max-width: calc(100% - 20px);
+  }
+  .scene-title h2 {
+    font-size: 21px;
+    margin: 4px 0;
+  }
+  .chapter-label {
+    font-size: 7px;
+  }
+  .scene-title .playback-label,
+  .scene-title .story-caption {
+    font-size: 9px;
+    padding: 3px 5px;
+  }
+  .celebration {
+    bottom: 8px;
+    padding: 8px 12px;
+  }
+  .celebration b {
+    font-size: 16px;
+  }
+  .celebration small {
+    font-size: 9px;
+  }
+  .pool {
+    width: 100%;
+    gap: 14px;
+    padding: 20px;
+  }
+  .qr-panel {
+    display: none;
+  }
+  .feed-heading > span {
+    font-size: 10px;
+  }
+  .feed-mobile-toggle {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 12px 0 0;
+  }
+  .overview .feed-body {
+    display: none;
+  }
+  .overview .feed-expanded .feed-body {
+    display: block;
+  }
+  .stops {
+    gap: 5px;
+  }
+  .stop {
+    font-size: 8px;
+    text-align: center;
+    align-items: center;
+  }
+  .stop-dot {
+    width: 24px;
+    height: 24px;
+    font-size: 8px;
+  }
+  .stops:before {
+    top: 12px;
+  }
+  .journey-heading > span {
+    font-size: 8px;
+  }
+  .operator-toolbar {
+    gap: 18px;
+  }
+  footer div {
+    gap: 12px;
+  }
+  .admin,
+  .mobile {
+    padding: 0 20px 30px;
+  }
+  .admin-grid {
+    grid-template-columns: 1fr;
+  }
+  .admin-runs-wallet .run-row {
+    width: 100%;
+    margin-right: 0;
+  }
+  .admin h1 {
+    font-size: 37px;
+  }
+  .mobile-heading h1 {
+    font-size: 48px;
+  }
+  .donation-card {
+    padding: 24px;
+  }
+  .screen.presentation {
+    padding: 0;
+    grid-template-rows: auto minmax(0, 1fr) 92px auto;
+  }
+  .presentation .header {
+    height: 60px;
+    padding: 0 12px;
+    flex-wrap: nowrap;
+  }
+  .presentation .header .status {
+    display: none;
+  }
+  .presentation .adventure {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 210px;
+  }
+  .presentation .pool {
+    padding: 12px;
+    gap: 10px;
+  }
+  .presentation .total {
+    font-size: 26px;
+  }
+  .presentation .qr-panel {
+    display: block;
+  }
+  .presentation .qr-panel img {
+    width: 112px;
+    height: 112px;
+  }
+  .presentation .qr-panel div {
+    display: none;
+  }
+  .presentation .scene-title {
+    left: 8px;
+    top: 8px;
+    padding: 8px;
+    max-width: calc(100% - 16px);
+  }
+  .presentation .scene-title h2 {
+    font-size: 20px;
+  }
+  .presentation .feed-avatar {
+    display: none;
+  }
+  .presentation .feed-line {
+    flex-direction: column;
+    gap: 3px;
+  }
+  .presentation .feed-heading > span {
+    display: none;
+  }
+  .presentation .journey {
+    padding: 8px 12px;
+  }
+  .presentation .stop {
+    flex-direction: column;
+    gap: 3px;
+    font-size: 7px;
+  }
+  .presentation-progress {
+    font-size: 9px;
+    margin-bottom: 6px;
+  }
+  .presentation .operator-toolbar {
+    padding: 8px 12px;
+  }
+  .presentation.is-fullscreen {
+    grid-template-rows: minmax(0, 1fr) 92px;
+  }
+}
+
+.admin-grid .presentation-settings {
+  grid-column: 1 / -1;
+}
+.admin-runs-wallet .admin-card {
+  height: 100%;
+}
+.admin-runs-wallet {
+  margin-bottom: 22px;
+}
+.admin-grid .admin-runs-wallet {
+  margin-bottom: 0;
+}
+
+.intro-actions .primary,
+.donation-card > .primary {
+  font-family: inherit;
+  font-size: 15px;
+  letter-spacing: 0;
 }

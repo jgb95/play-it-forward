@@ -303,3 +303,39 @@ test("run management is authenticated, saved replays pin a run and rehearsal can
     await s.close();
   }
 });
+
+test("public feed validates cursors, scopes saved runs and excludes checkout details", async () => {
+  const s = await setup();
+  try {
+    const c = await (
+      await s.post("/contributions", {
+        amount: 12,
+        method: "bitcoin",
+        name: "Visitor",
+      })
+    ).json();
+    await s.post("/contributions/" + c.id + "/simulate");
+    const r = await fetch(s.base + "/api/feed"),
+      feed = await r.json();
+    assert.equal(r.status, 200);
+    assert.equal(feed.entries[0].amount, 12);
+    assert.equal(feed.entries[0].method, "bitcoin");
+    assert.equal(feed.entries[0].status, "confirmed");
+    for (const key of ["requestId", "destination", "uri", "invoice"])
+      assert.equal(key in feed.entries[0], false);
+    for (const query of [
+      "limit=101",
+      "before=-1",
+      "cutoff=999999",
+      "limit=1.5",
+    ])
+      assert.equal((await fetch(s.base + "/api/feed?" + query)).status, 400);
+    assert.equal((await fetch(s.base + "/api/feed?run=unknown")).status, 404);
+    assert.equal(
+      (await (await fetch(s.base + "/api/feed?run=featured")).json()).eventKey,
+      s.store.state().eventKey,
+    );
+  } finally {
+    await s.close();
+  }
+});

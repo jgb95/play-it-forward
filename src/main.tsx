@@ -11,6 +11,7 @@ import {
   progression,
   chapterRecruit,
   giftPresets,
+  type StoryEvent,
   type HistoryPage,
   type Observation,
   type AccelerationQuote,
@@ -22,6 +23,11 @@ import {
   type Contribution,
   type Method,
 } from "../shared/model";
+import {
+  ContributionFeed,
+  type FeedEntry,
+  type FeedPage,
+} from "../shared/feed";
 import { background, render, type Trail } from "./world";
 import { defaultPresentation, type Presentation } from "../shared/presentation";
 import { CelebrationQueue, blendMagic } from "./cinema";
@@ -195,7 +201,9 @@ function Header({
   mode,
   connected,
   config,
+  eventMode,
 }: {
+  eventMode?: string;
   mode?: string;
   connected?: boolean;
   config?: Config;
@@ -220,7 +228,9 @@ function Header({
             ? "DEMO · SIMULATED SATS"
             : mode === "signet"
               ? "SIGNET · TEST SATS"
-              : "LIVE COMMUNITY POOL"}
+              : eventMode === "archive"
+                ? "EVENT ARCHIVE"
+                : "LIVE COMMUNITY POOL"}
       </span>
       <ThemeToggle />
     </header>
@@ -241,6 +251,7 @@ function World({
   onDisplay,
   onStory,
   onIntroComplete,
+  onReplayEvent,
 }: {
   state: State;
   events: Celebration[];
@@ -256,6 +267,7 @@ function World({
   onDisplay: (state: State, mode: string, finished: boolean) => void;
   onStory: (message: string) => void;
   onIntroComplete: (cutoff: number) => Promise<Celebration[]>;
+  onReplayEvent: (event: StoryEvent | null) => void;
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
   const latest = useRef({
@@ -273,6 +285,7 @@ function World({
     onDisplay,
     onStory,
     onIntroComplete,
+    onReplayEvent,
   });
   latest.current = {
     state,
@@ -289,6 +302,7 @@ function World({
     onDisplay,
     onStory,
     onIntroComplete,
+    onReplayEvent,
   };
   useEffect(() => {
     const ctx = ref.current!.getContext("2d")!;
@@ -346,6 +360,7 @@ function World({
           ].indexOf(scene);
     }
     function startPlayback(value: PlaybackSession, cfg: Config) {
+      latest.current.onReplayEvent(null);
       sessionId = value.id;
       time = 0;
       motionTime = 0;
@@ -506,6 +521,7 @@ function World({
             ready && queue.count === 0,
             l.presentation.cueSeconds,
           );
+          if (event) l.onReplayEvent(event);
           if (event?.kind === "donation")
             queue.enqueue([{ id: event.id, ...event.payload }]);
           visual = { ...visual, onchain: reader.pending() };
@@ -697,46 +713,242 @@ async function history(
   }
   return { ...first, events, more: false, after: page.after };
 }
-function PendingBoard({ outputs = [] }: { outputs?: Observation[] }) {
-  const waiting = outputs.filter(
-      (o) => o.status === "pending" && o.acceleration !== "accepted",
-    ),
-    express = outputs.filter(
-      (o) => o.status === "pending" && o.acceleration === "accepted",
-    );
+function ContributionActivity({
+  run,
+  revision,
+  restore,
+  replay,
+  fullscreen,
+  presenting,
+  mode,
+  outputs,
+}: {
+  outputs?: Observation[];
+  run?: string;
+  revision: number;
+  restore: number;
+  replay: FeedEntry[] | null;
+  fullscreen: boolean;
+  presenting: boolean;
+  mode: State["mode"];
+}) {
+  const [page, setPage] = useState<FeedPage | null>(null);
+  const [failure, setFailure] = useState("");
+  const [expanded, setExpanded] = useState(false);
+  const [readingOlder, setReadingOlder] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const list = useRef<HTMLDivElement>(null);
+  const requestVersion = useRef(0);
+  async function load(older = false) {
+    if (!run) return;
+    const version = ++requestVersion.current;
+    setBusy(true);
+    try {
+      const next = await api<FeedPage>(
+        `/feed?run=${encodeURIComponent(run)}${older && page ? `&before=${page.before}&cutoff=${page.cutoff}` : ""}`,
+      );
+      if (version !== requestVersion.current) return;
+      setPage((p) =>
+        older && p
+          ? { ...next, entries: [...p.entries, ...next.entries].slice(-100) }
+          : next,
+      );
+      setFailure("");
+      if (!older) {
+        setReadingOlder(false);
+        if (list.current) list.current.scrollTop = 0;
+      }
+    } catch (e) {
+      if (version === requestVersion.current) setFailure((e as Error).message);
+    } finally {
+      if (version === requestVersion.current) setBusy(false);
+    }
+  }
+  useEffect(() => {
+    setPage(null);
+    setReadingOlder(false);
+    if (replay !== null || !run) return;
+    void load();
+    return () => {
+      requestVersion.current++;
+    };
+  }, [run, restore, replay !== null]);
+  useEffect(() => {
+    if (replay !== null || !run) return;
+    const timer = setTimeout(() => {
+      if (!readingOlder) {
+        void load();
+        return;
+      }
+      // Refresh statuses in the viewed window without pulling readers back to the top.
+      const top = Math.max(...(page?.entries.map((e) => e.firstId) ?? [0]));
+      void api<FeedPage>(
+        `/feed?run=${encodeURIComponent(run)}&before=${top + 1}&limit=100`,
+      )
+        .then((fresh) =>
+          setPage((p) =>
+            p?.eventKey === fresh.eventKey
+              ? {
+                  ...p,
+                  entries: p.entries.map(
+                    (e) => fresh.entries.find((n) => n.key === e.key) ?? e,
+                  ),
+                }
+              : p,
+          ),
+        )
+        .catch(() => setFailure("Reconnecting"));
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [revision, replay !== null, run, readingOlder]);
+  useEffect(() => {
+    if (fullscreen && replay === null && run) void load();
+  }, [fullscreen]);
+  useEffect(() => {
+    if (!failure || replay !== null || !run) return;
+    const retry = setTimeout(() => void load(), 3000);
+    return () => clearTimeout(retry);
+  }, [failure, run, replay !== null, revision]);
+  const rows = replay ?? page?.entries ?? [];
+  const pending = (outputs ?? [])
+    .filter((e) => e.status === "pending")
+    .reduce((n, e) => n + e.amount, 0);
+  const body = (
+    <>
+      {pending > 0 && (
+        <p className="feed-pending">
+          {sats(pending)} pending sats · outside the pool
+        </p>
+      )}
+      {failure && (
+        <p className="feed-empty" role="status">
+          Activity is reconnecting…
+        </p>
+      )}
+      <div
+        className="feed-list"
+        ref={list}
+        onScroll={() => {
+          if (!fullscreen && (list.current?.scrollTop ?? 0) > 16)
+            setReadingOlder(true);
+        }}
+        aria-label="Contribution activity"
+      >
+        {!rows.length && (
+          <p className="feed-empty">
+            {replay !== null
+              ? "The adventure starts here."
+              : page
+                ? "Be the first to carry the adventure forward."
+                : "Loading contributions…"}
+          </p>
+        )}
+        {rows.map((row) => (
+          <article className={`feed-row ${row.status}`} key={row.key}>
+            <span className="feed-avatar" aria-hidden="true">
+              {row.method === "bitcoin"
+                ? "₿"
+                : row.method === "lightning"
+                  ? "ϟ"
+                  : row.method === "ark"
+                    ? "◈"
+                    : "✦"}
+            </span>
+            <div className="feed-content">
+              <div className="feed-line">
+                <b>{row.name || "A kind contributor"}</b>
+                <strong>
+                  {sats(row.amount)} <small>sats</small>
+                </strong>
+              </div>
+              <div className="feed-meta">
+                <span>
+                  {row.method
+                    ? {
+                        bitcoin: "Bitcoin",
+                        lightning: "Lightning",
+                        ark: "Ark",
+                      }[row.method]
+                    : "Contribution"}
+                </span>
+                <span>
+                  {row.status === "pending"
+                    ? "Waiting for a block"
+                    : row.status === "confirmed"
+                      ? "Confirmed"
+                      : row.status === "replaced"
+                        ? "Replaced"
+                        : "Dropped"}
+                </span>
+              </div>
+              {row.express && (
+                <span className="express-badge">
+                  <img src="/branding/mempool-accelerator.svg" alt="" />
+                  Express · Mempool Accelerator
+                </span>
+              )}
+              {!fullscreen && row.txid && /^[a-f0-9]{64}$/i.test(row.txid) && (
+                <a
+                  className="feed-explorer"
+                  href={`https://mempool.space/${mode === "signet" ? "signet/" : ""}tx/${row.txid}`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  View transaction ↗
+                </a>
+              )}
+            </div>
+          </article>
+        ))}
+      </div>
+      {!fullscreen && replay === null && (
+        <div className="feed-actions">
+          {readingOlder && (
+            <button onClick={() => void load()} disabled={busy}>
+              Latest activity ↑
+            </button>
+          )}
+          {page?.more && (
+            <button
+              onClick={() => {
+                setReadingOlder(true);
+                void load(true);
+              }}
+              disabled={busy}
+            >
+              Older contributions
+            </button>
+          )}
+        </div>
+      )}
+    </>
+  );
   return (
-    <div className="departures">
-      <img src="/branding/mempool.png" alt="Mempool" />
-      <div>
-        <b>Waiting for a block</b>
-        <span className="pending-particles">
-          {waiting.slice(0, 6).map((o) => (
-            <i key={o.key}>✦</i>
-          ))}
-        </span>
-        <span>
-          {sats(waiting.reduce((n, o) => n + o.amount, 0))} sats ·{" "}
-          {waiting.length} outputs
-        </span>
+    <section
+      className={`activity-feed ${expanded ? "feed-expanded" : ""} ${fullscreen ? "feed-static" : ""}`}
+    >
+      <div className="feed-heading">
+        <h3>Contributions</h3>
+        <span>{replay !== null ? "Replay" : "Community activity"}</span>
       </div>
-      <div>
-        <b>Express ✦</b>
-        <span className="pending-particles express">
-          {express.slice(0, 6).map((o) => (
-            <i key={o.key}>✦</i>
-          ))}
-        </span>
-        <span>
-          {sats(express.reduce((n, o) => n + o.amount, 0))} sats ·{" "}
-          {express.length} outputs
-        </span>
-      </div>
-      <small>Pending sats · join the pool after confirmation</small>
-    </div>
+      {!fullscreen && !presenting && (
+        <button
+          className="feed-mobile-toggle"
+          aria-expanded={expanded}
+          onClick={() => setExpanded(!expanded)}
+        >
+          {expanded ? "Hide contributions" : "Show contributions"}{" "}
+          {expanded ? "−" : "+"}
+        </button>
+      )}
+      <div className="feed-body">{body}</div>
+    </section>
   );
 }
 function Screen({ presenting = false }: { presenting?: boolean }) {
   const { data, connected, error, events, restore } = useJourney();
+  const replayProjection = useRef(new ContributionFeed());
+  const [replayRows, setReplayRows] = useState<FeedEntry[]>([]);
   const [session, setSession] = useState<PlaybackSession | null>(null),
     [playbackControl, setPlaybackControl] = useState<PlaybackControl>({
       paused: false,
@@ -792,25 +1004,20 @@ function Screen({ presenting = false }: { presenting?: boolean }) {
   }, [data?.state.eventKey, data?.state.eventMode]);
   const [visualChapter, setVisualChapter] = useState<number | null>(null);
   const [fullscreen, setFullscreen] = useState(false),
-    [controls, setControls] = useState(true),
     [fullscreenError, setFullscreenError] = useState("");
-  const hideControls = useRef<ReturnType<typeof setTimeout> | undefined>(
-    undefined,
-  );
-  const reveal = () => {
-    setControls(true);
-    clearTimeout(hideControls.current);
-    hideControls.current = setTimeout(() => setControls(false), 3500);
-  };
   useEffect(() => {
     const changed = () => setFullscreen(!!document.fullscreenElement);
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && document.fullscreenElement)
+        void document.exitFullscreen();
+    };
     document.addEventListener("fullscreenchange", changed);
-    if (presenting) reveal();
+    document.addEventListener("keydown", escape);
     return () => {
       document.removeEventListener("fullscreenchange", changed);
-      clearTimeout(hideControls.current);
+      document.removeEventListener("keydown", escape);
     };
-  }, [presenting]);
+  }, []);
   async function toggleFullscreen() {
     try {
       setFullscreenError("");
@@ -907,37 +1114,54 @@ function Screen({ presenting = false }: { presenting?: boolean }) {
     (data.state.eventMode === "archive" ? "/screen?replay=1" : "/donate");
   return (
     <main
-      className={`screen ${presenting ? "presentation" : "overview"} ${controls || playbackMode === "replay" ? "controls-visible" : "controls-hidden"}`}
-      onPointerMove={presenting ? reveal : undefined}
-      onFocusCapture={presenting ? reveal : undefined}
-      onKeyDown={presenting ? reveal : undefined}
+      className={`screen ${presenting ? "presentation" : "overview"} ${fullscreen ? "is-fullscreen" : ""}`}
     >
-      <Header mode={state.mode} connected={connected} config={config} />
-      {!presenting && (
-        <a className="present-link" href={BASE + "/screen"}>
-          Present adventure <span>↗</span>
-        </a>
+      {!fullscreen && (
+        <Header
+          mode={state.mode}
+          connected={connected}
+          config={config}
+          eventMode={data.state.eventMode}
+        />
       )}
-      <section className="intro">
-        <div>
-          <p className="eyebrow">
-            A COMMUNITY ADVENTURE · SIX STOPS THROUGH BERLIN
-          </p>
-          <h1>
-            A little kindness.
-            <br />
-            <em>A long way.</em>
-          </h1>
-        </div>
-        <div className="intro-note">
-          <span className="spark">✳</span>
-          <p>
-            One city. One courier. All of us.
-            <br />
-            Your sats carry the story forward.
-          </p>
-        </div>
-      </section>
+      {!presenting && (
+        <section className="intro">
+          <div>
+            <p className="eyebrow">
+              A COMMUNITY ADVENTURE · SIX STOPS THROUGH BERLIN
+            </p>
+            <h1>
+              A little kindness.
+              <br />
+              <em>A long way.</em>
+            </h1>
+          </div>
+          <div className="intro-actions">
+            <p>
+              {data.state.eventMode === "archive"
+                ? "A community adventure, saved to watch again."
+                : "Grow the community prize pool. Bring Berlin to bitcoin++."}
+            </p>
+            <a
+              className="primary"
+              href={
+                BASE +
+                (data.state.eventMode === "archive"
+                  ? "/screen?replay=1"
+                  : "/donate")
+              }
+            >
+              {data.state.eventMode === "archive"
+                ? "Watch replay"
+                : "Donate sats"}{" "}
+              ↗
+            </a>
+            <a className="present-link" href={BASE + "/screen?live=1"}>
+              Present adventure ↗
+            </a>
+          </div>
+        </section>
+      )}
       <section className="adventure">
         <div className="scene">
           {!preparing && (
@@ -959,6 +1183,11 @@ function Screen({ presenting = false }: { presenting?: boolean }) {
                 setFinished(f);
               }}
               onStory={setStory}
+              onReplayEvent={(event) => {
+                if (!event) replayProjection.current = new ContributionFeed();
+                else replayProjection.current.apply(event);
+                setReplayRows(replayProjection.current.rows());
+              }}
               onIntroComplete={async (cutoff) =>
                 (await history(cutoff)).events
                   .filter((e) => e.kind === "donation")
@@ -990,50 +1219,7 @@ function Screen({ presenting = false }: { presenting?: boolean }) {
               06
             </span>
             <h2>{visible.name}</h2>
-            <p>{visible.subtitle}</p>
-            {pending > 0 && (
-              <p className="queue-note">
-                {pending} moments still to come · pool total is current
-              </p>
-            )}
-          </div>
-          <div className="scene-bottom">
-            <span className="location-pin">⌖ BERLIN, DE</span>
-            <span className="inventory">
-              {(display?.crew ?? state.crew).map((id) => {
-                const recruit = config.chapters
-                  .map((_, i) => chapterRecruit(config, i))
-                  .find((r) => r.id === id);
-                return (
-                  <span key={id} title={recruit?.role}>
-                    {recruit?.name}
-                  </span>
-                );
-              })}
-              {(playbackMode !== "live"
-                ? (display?.rewards ?? [])
-                : state.rewards
-              ).length ? (
-                (playbackMode !== "live"
-                  ? (display?.rewards ?? [])
-                  : state.rewards
-                ).map((x) => (
-                  <span key={x} title={x}>
-                    {
-                      {
-                        hat: "CAP",
-                        sunglasses: "SHADES",
-                        shirt: "TEE",
-                        bag: "BAG",
-                        key: "KEY",
-                      }[x as "hat"]
-                    }
-                  </span>
-                ))
-              ) : (
-                <span>A SATCHEL FULL OF POSSIBILITIES</span>
-              )}
-            </span>
+            {!fullscreen && <p>{visible.subtitle}</p>}
           </div>
           {notice && (
             <div className="celebration" role="status">
@@ -1074,20 +1260,15 @@ function Screen({ presenting = false }: { presenting?: boolean }) {
               ? "RAISED SO FAR IN THIS REPLAY"
               : "COMMUNITY PRIZE POOL RAISED"}
           </p>
-          {playbackMode === "replay" && (
-            <p>
-              Recorded event total: {sats(session?.history.finalTotal ?? 0)}{" "}
-              sats
-            </p>
-          )}
-          <PendingBoard
-            outputs={(playbackMode === "live" ? data.state : display)?.onchain}
-          />
-
           <div className="total">
             {sats(state.total)}
             <span>sats</span>
           </div>
+          {playbackMode === "replay" && (
+            <p className="recorded-total">
+              Recorded total · {sats(session?.history.finalTotal ?? 0)} sats
+            </p>
+          )}
           <div className="chapter-progress">
             <div>
               <span>
@@ -1110,26 +1291,60 @@ function Screen({ presenting = false }: { presenting?: boolean }) {
           <div className="qr-panel">
             <QR value={url} size={136} />
             <div>
-              <h3>Carry it forward.</h3>
+              <h3>
+                {data.state.eventMode === "archive"
+                  ? "Watch the adventure"
+                  : "Donate sats"}
+              </h3>
               <p>
-                Scan. Send sats.
-                <br />
-                Be part of the story.
+                {data.state.eventMode === "archive"
+                  ? "Scan to replay the event."
+                  : "Scan to grow the community pool."}
               </p>
             </div>
           </div>
-          <a className="donate-link" href={BASE + "/donate"}>
-            JOIN THE JOURNEY <span>↗</span>
-          </a>
-          <p className="pool-footnote">
-            {state.mode === "demo"
-              ? "Demo adventure · no real money moves"
-              : state.mode === "signet"
-                ? "Test network · no real prize money"
-                : "Bitcoin · Lightning · Ark"}
-            {presenting ? " " : <br />}
-            All contributions grow the community pool.
-          </p>
+          {!fullscreen && (
+            <a
+              className="donate-link"
+              href={
+                BASE +
+                (data.state.eventMode === "archive"
+                  ? "/screen?replay=1"
+                  : "/donate")
+              }
+            >
+              {data.state.eventMode === "archive"
+                ? "Watch replay"
+                : "Donate sats"}{" "}
+              <span>↗</span>
+            </a>
+          )}
+          {(!fullscreen || state.mode !== "mainnet") && (
+            <p className="pool-footnote">
+              {state.mode === "demo"
+                ? "Demo adventure · no real money moves"
+                : state.mode === "signet"
+                  ? "Test network · no real prize money"
+                  : "Bitcoin · Lightning · Ark"}
+            </p>
+          )}
+          <ContributionActivity
+            run={data.state.eventKey}
+            revision={data.state.eventId}
+            restore={restore}
+            replay={
+              session?.kind === "replay" ||
+              (preparing && data.state.eventMode === "archive")
+                ? replayRows
+                : null
+            }
+            fullscreen={fullscreen}
+            presenting={presenting}
+            mode={state.mode}
+            outputs={
+              session?.kind === "replay" ? display?.onchain : data.state.onchain
+            }
+          />
         </aside>
       </section>
       <section className="journey">
@@ -1169,105 +1384,100 @@ function Screen({ presenting = false }: { presenting?: boolean }) {
               <span className="stop-dot">
                 {i < state.chapter ? "✓" : String(i + 1).padStart(2, "0")}
               </span>
-              <span>
-                {
-                  [
-                    "Station",
-                    "Spree",
-                    "Alexanderplatz",
-                    "East Side Gallery",
-                    "Brandenburg Gate",
-                    "Hackathon Hall",
-                  ][i]
-                }
-              </span>
+              <span>{ch.name}</span>
             </div>
           ))}
         </div>
       </section>
-      <div className="playback-controls">
-        {playbackMode === "replay" ? (
-          <>
-            <button
-              onClick={() =>
-                setPlaybackControl((p) => ({ ...p, paused: !p.paused }))
-              }
-            >
-              {playbackControl.paused ? "Play" : "Pause"}
-            </button>
-            <button onClick={() => void start("replay")}>Restart</button>
-            <label>
-              Speed{" "}
-              <select
-                value={playbackControl.speed}
-                onChange={(e) =>
-                  setPlaybackControl((p) => ({
-                    ...p,
-                    speed: Number(e.target.value),
-                  }))
-                }
-              >
-                {[0.5, 1, 2, 4].map((n) => (
-                  <option key={n} value={n}>
-                    {n}×
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              <input
-                type="checkbox"
-                checked={playbackControl.loop}
-                onChange={(e) =>
-                  setPlaybackControl((p) => ({ ...p, loop: e.target.checked }))
-                }
-              />{" "}
-              Loop
-            </label>
-          </>
-        ) : (
-          <>
-            <button onClick={() => void start("intro")}>
-              Replay introduction
-            </button>
-            <a href={BASE + "/screen?live=1"}>Direct to live ↗</a>
-            <button onClick={() => void start("replay")}>
-              Replay recorded adventure
-            </button>
-          </>
-        )}
-        {playbackError && <span role="alert">{playbackError}</span>}
-      </div>
-      <footer>
-        <span>SMALL PAYMENTS. SHARED POSSIBILITIES.</span>
-        <div>
-          <button onClick={() => setReduced(!reduced)}>
-            {reduced ? "Motion off" : "Motion on"}
-          </button>
-          <button
-            onClick={() => {
-              if (!sound) {
-                audio.current ??= new AudioContext();
-                void audio.current.resume();
-              }
-              setSound(!sound);
-            }}
-          >
-            {sound ? "Sound on" : "Sound off"}
-          </button>
-          {presenting ? (
-            <>
-              <button onClick={toggleFullscreen}>
-                {fullscreen ? "Exit fullscreen" : "Fullscreen ↗"}
+      {!fullscreen && (
+        <div className="operator-toolbar">
+          <div className="playback-controls">
+            {playbackMode === "replay" ? (
+              <>
+                <button
+                  onClick={() =>
+                    setPlaybackControl((p) => ({ ...p, paused: !p.paused }))
+                  }
+                >
+                  {playbackControl.paused ? "Play" : "Pause"}
+                </button>
+                <button onClick={() => void start("replay")}>Restart</button>
+                <label>
+                  Speed{" "}
+                  <select
+                    value={playbackControl.speed}
+                    onChange={(e) =>
+                      setPlaybackControl((p) => ({
+                        ...p,
+                        speed: Number(e.target.value),
+                      }))
+                    }
+                  >
+                    {[0.5, 1, 2, 4].map((n) => (
+                      <option key={n} value={n}>
+                        {n}×
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={playbackControl.loop}
+                    onChange={(e) =>
+                      setPlaybackControl((p) => ({
+                        ...p,
+                        loop: e.target.checked,
+                      }))
+                    }
+                  />{" "}
+                  Loop
+                </label>
+              </>
+            ) : (
+              <>
+                <button onClick={() => void start("intro")}>
+                  Replay introduction
+                </button>
+                <a href={BASE + "/screen?live=1"}>Direct to live ↗</a>
+                <button onClick={() => void start("replay")}>
+                  Replay recorded adventure
+                </button>
+              </>
+            )}
+            {playbackError && <span role="alert">{playbackError}</span>}
+          </div>
+          <footer>
+            <div>
+              <button onClick={() => setReduced(!reduced)}>
+                {reduced ? "Motion off" : "Motion on"}
               </button>
-              <a href={BASE + "/"}>Overview ↗</a>
-            </>
-          ) : (
-            <a href={BASE + "/screen"}>Present adventure ↗</a>
-          )}
-          <a href={BASE + "/admin"}>Operator ↗</a>
+              <button
+                onClick={() => {
+                  if (!sound) {
+                    audio.current ??= new AudioContext();
+                    void audio.current.resume();
+                  }
+                  setSound(!sound);
+                }}
+              >
+                {sound ? "Sound on" : "Sound off"}
+              </button>
+              {presenting ? (
+                <>
+                  <button onClick={toggleFullscreen}>
+                    {fullscreen ? "Exit fullscreen" : "Fullscreen ↗"}
+                  </button>
+                  <a href={BASE + "/"}>Overview ↗</a>
+                </>
+              ) : (
+                <a href={BASE + "/screen"}>Present adventure ↗</a>
+              )}
+              <a href={BASE + "/admin"}>Operator ↗</a>
+            </div>
+          </footer>
         </div>
-      </footer>
+      )}
       {fullscreenError && (
         <div className="connection-note" role="status">
           {fullscreenError}
@@ -1455,6 +1665,7 @@ function Donate() {
         mode={data.state.mode}
         connected={connected}
         config={data.config}
+        eventMode={data.state.eventMode}
       />
       <div className="mobile-heading">
         <p className="eyebrow">BERLIN, LET’S BUILD SOMETHING TOGETHER.</p>
@@ -1473,15 +1684,11 @@ function Donate() {
           <>
             <p className="eyebrow">
               {c.status === "paid"
-                ? "KINDNESS DELIVERED ✦"
+                ? "PAYMENT CONFIRMED ✦"
                 : c.status === "expired"
                   ? "INVOICE EXPIRED"
-                  : "A LITTLE MAGIC, ON ITS WAY"}
+                  : "PAYMENT REQUEST"}
             </p>
-            <ExpressCheckout
-              contribution={c}
-              enabled={data.accelerationEnabled}
-            />
             <h2>
               {c.status === "paid"
                 ? "Thank you" + (c.name ? ", " + c.name : "") + "."
@@ -1498,7 +1705,7 @@ function Donate() {
               </>
             ) : (
               <>
-                <QR value={c.uri} size={224} />
+                {c.status !== "expired" && <QR value={c.uri} size={224} />}
                 <p className="payment-note">
                   {data.state.mode === "demo"
                     ? "This is a simulated contribution. No wallet or real sats needed."
@@ -1537,33 +1744,44 @@ function Donate() {
                         OPEN WALLET ↗
                       </a>
                     )}
-                    <button
-                      className="secondary"
-                      onClick={() =>
-                        navigator.clipboard
-                          .writeText(c.destination)
-                          .then(() => setMessage("Payment details copied."))
-                          .catch(() =>
-                            setMessage(
-                              "Select and copy the payment details below.",
-                            ),
-                          )
-                      }
-                    >
-                      {c.method === "ark"
-                        ? "Copy Ark address"
-                        : "Copy payment details"}
-                    </button>
-                    <code className="destination">{c.destination}</code>
+                    {c.status !== "expired" && (
+                      <>
+                        <button
+                          className="secondary"
+                          onClick={() =>
+                            navigator.clipboard
+                              .writeText(c.destination)
+                              .then(() => setMessage("Payment details copied."))
+                              .catch(() =>
+                                setMessage(
+                                  "Select and copy the payment details below.",
+                                ),
+                              )
+                          }
+                        >
+                          {c.method === "ark"
+                            ? "Copy Ark address"
+                            : "Copy payment details"}
+                        </button>
+                        <code className="destination">{c.destination}</code>
+                      </>
+                    )}
                     <span className="pending">
                       {c.status === "expired"
                         ? "Create a fresh invoice to try again."
-                        : "Waiting for verified payment…"}
+                        : c.method === "bitcoin" &&
+                            c.onchain?.some((o) => o.status === "pending")
+                          ? `${sats(c.onchain.filter((o) => o.status === "pending").reduce((n, o) => n + o.amount, 0))} sats detected · waiting for a block`
+                          : "Waiting for verified payment…"}
                     </span>
                   </>
                 )}
               </>
             )}
+            <ExpressCheckout
+              contribution={c}
+              enabled={data.accelerationEnabled}
+            />
             <button
               className="secondary"
               onClick={() => {
@@ -1575,7 +1793,9 @@ function Donate() {
               {" "}
               {c.status === "paid"
                 ? "Contribute again"
-                : "Back to contribution"}
+                : c.status === "expired"
+                  ? "Create a new invoice"
+                  : "Back to contribution"}
             </button>
           </>
         ) : data.state.eventMode === "archive" ? (
@@ -1589,7 +1809,7 @@ function Donate() {
         ) : (
           <>
             <label className="field-label" htmlFor="amount">
-              HOW MUCH KINDNESS?
+              Amount (sats)
             </label>
             <div className="amount-input">
               <input
@@ -1614,7 +1834,7 @@ function Donate() {
               ))}
             </div>
             <label className="field-label" htmlFor="name">
-              YOUR NAME <span>optional</span>
+              Your name <span>optional</span>
             </label>
             <input
               id="name"
@@ -1627,6 +1847,7 @@ function Donate() {
             <p className="hint">
               Shown with your celebration on the venue screen.
             </p>
+            <p className="field-label">Payment method</p>
             <div className="methods">
               {data.config.methods.map((m) => (
                 <button
@@ -1647,7 +1868,9 @@ function Donate() {
               disabled={busy || amount < 1 || !Number.isInteger(amount)}
               onClick={contribute}
             >
-              {busy ? "Preparing your contribution…" : "CARRY IT FORWARD ↗"}
+              {busy
+                ? "Preparing your contribution…"
+                : `Donate ${sats(amount)} sats ↗`}
             </button>
             <p className="hint">
               {data.state.mode === "demo"
@@ -1679,7 +1902,9 @@ function Donate() {
 function RunAndWalletControls({
   health,
   refresh,
+  part,
 }: {
+  part: "runs" | "wallet";
   health: any;
   refresh: () => Promise<void>;
 }) {
@@ -1703,69 +1928,69 @@ function RunAndWalletControls({
     }
   }
   return (
-    <div
-      className={
-        "admin-grid" + (health.withdrawalsEnabled ? "" : " admin-grid-single")
-      }
-    >
-      <section className="admin-card">
-        <p className="eyebrow">SAVED GAME RUNS</p>
-        <h2>Every adventure has a history</h2>
-        <p>
-          Starting a new run saves this one and starts progress at zero. Late
-          donations remain with the run that issued their payment request.
-          Wallet funds stay in the shared organizer wallet.
-        </p>
-        <label htmlFor="run-name">Next run’s name</label>
-        <input
-          id="run-name"
-          value={name}
-          maxLength={80}
-          onChange={(e) => setName(e.target.value)}
-        />
-        <button
-          className="secondary"
-          disabled={busy || !name.trim()}
-          onClick={() => {
-            if (
-              window.confirm(
-                "Save this run and start a new adventure at zero? No funds will move.",
+    <div className={`admin-runs-wallet ${part}-controls`}>
+      {part === "runs" && (
+        <section className="admin-card">
+          <p className="eyebrow">SAVED GAME RUNS</p>
+          <h2>Game runs & replay</h2>
+          <p>
+            Starting a new run saves this one and starts progress at zero. Late
+            donations remain with the run that issued their payment request.
+            Wallet funds stay in the shared organizer wallet.
+          </p>
+          <label htmlFor="run-name">Next run’s name</label>
+          <input
+            id="run-name"
+            value={name}
+            maxLength={80}
+            onChange={(e) => setName(e.target.value)}
+          />
+          <button
+            className="secondary"
+            disabled={busy || !name.trim()}
+            onClick={() => {
+              if (
+                window.confirm(
+                  "Save this run and start a new adventure at zero? No funds will move.",
+                )
               )
-            )
-              void action(async () => {
-                await api("/admin/runs", { name });
-                setMessage("Previous run saved. New adventure started.");
-              });
-          }}
-        >
-          Finish run & start new
-        </button>
-        {health.runs?.map((r: any) => (
-          <div key={r.id} className="run-row">
-            <b>{r.name}</b>
-            <p>
-              {sats(r.total)} sats · {r.active ? "Active" : "Saved"}
-              {r.featured ? " · Public replay" : ""}
-            </p>
-            <a href={BASE + "/screen?replay=1&run=" + encodeURIComponent(r.id)}>
-              Replay this run ↗
-            </a>
-            <button
-              className="secondary"
-              disabled={busy || r.featured}
-              onClick={() =>
                 void action(async () => {
-                  await api("/admin/runs/feature", { id: r.id });
-                  setMessage("Public archive replay selected.");
-                })
-              }
-            >
-              Use as public replay
-            </button>
-          </div>
-        ))}
-      </section>
-      {health.withdrawalsEnabled && (
+                  await api("/admin/runs", { name });
+                  setMessage("Previous run saved. New adventure started.");
+                });
+            }}
+          >
+            Finish run & start new
+          </button>
+          {health.runs?.map((r: any) => (
+            <div key={r.id} className="run-row">
+              <b>{r.name}</b>
+              <p>
+                {sats(r.total)} sats · {r.active ? "Active" : "Saved"}
+                {r.featured ? " · Public replay" : ""}
+              </p>
+              <a
+                href={BASE + "/screen?replay=1&run=" + encodeURIComponent(r.id)}
+              >
+                Replay this run ↗
+              </a>
+              <button
+                className="secondary"
+                disabled={busy || r.featured}
+                onClick={() =>
+                  void action(async () => {
+                    await api("/admin/runs/feature", { id: r.id });
+                    setMessage("Public archive replay selected.");
+                  })
+                }
+              >
+                Use as public replay
+              </button>
+            </div>
+          ))}
+        </section>
+      )}
+      {part === "wallet" && health.withdrawalsEnabled && (
         <section className="admin-card">
           <p className="eyebrow">ORGANIZER WALLET</p>
           <h2>Withdraw entire wallet</h2>
@@ -1991,6 +2216,7 @@ function Admin() {
         mode={data?.state.mode}
         connected={connected}
         config={data?.config}
+        eventMode={data?.state.eventMode}
       />
       <p className="eyebrow">
         BEHIND THE ADVENTURE {BASE ? "· ISOLATED REHEARSAL" : "· EVENT"}
@@ -2078,9 +2304,14 @@ function Admin() {
                 Reconcile now
               </button>
             </section>
-            <section className="admin-card">
-              <p className="eyebrow">THE DIRECTOR’S CHAIR</p>
-              <h2>Give every gift a moment.</h2>
+            <RunAndWalletControls
+              health={health}
+              refresh={refresh}
+              part="runs"
+            />
+            <section className="admin-card presentation-settings">
+              <p className="eyebrow">PRESENTATION & REPLAY</p>
+              <h2>Presentation settings</h2>
               <label htmlFor="pace">Travel style</label>
               <select
                 id="pace"
@@ -2140,7 +2371,11 @@ function Admin() {
               </button>
             </section>
           </div>
-          <RunAndWalletControls health={health} refresh={refresh} />
+          <RunAndWalletControls
+            health={health}
+            refresh={refresh}
+            part="wallet"
+          />
           {health?.mode === "demo" && (
             <div className="admin-grid">
               <section className="admin-card">
