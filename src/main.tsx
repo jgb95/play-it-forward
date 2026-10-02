@@ -9,6 +9,12 @@ import { createRoot } from "react-dom/client";
 import QRCode from "qrcode";
 import {
   progression,
+  chapterRecruit,
+  giftPresets,
+  type HistoryPage,
+  type Observation,
+  type AccelerationQuote,
+  type AccelerationAttempt,
   sats,
   type Config,
   type State,
@@ -19,6 +25,13 @@ import {
 import { background, render, type Trail } from "./world";
 import { defaultPresentation, type Presentation } from "../shared/presentation";
 import { CelebrationQueue } from "./cinema";
+import {
+  ReplayReader,
+  RecapTimeline,
+  emptyState,
+  type PlaybackSession,
+  type PlaybackControl,
+} from "./playback";
 import { JourneyMotion, courierX } from "./motion";
 import "./style.css";
 const BASE = location.pathname.startsWith("/rehearsal") ? "/rehearsal" : "";
@@ -62,6 +75,7 @@ function useJourney() {
       config: Config;
       state: State;
       presentation: Presentation;
+      accelerationEnabled: boolean;
     } | null>(null),
     [connected, setConnected] = useState(false),
     [error, setError] = useState(""),
@@ -72,9 +86,12 @@ function useJourney() {
       active = true;
     let retry: ReturnType<typeof setTimeout>;
     function connect() {
-      api<{ config: Config; state: State; presentation: Presentation }>(
-        "/state",
-      )
+      api<{
+        config: Config;
+        state: State;
+        presentation: Presentation;
+        accelerationEnabled: boolean;
+      }>("/state")
         .then((d) => {
           if (!active) return;
           setData(d);
@@ -103,6 +120,14 @@ function useJourney() {
             );
             setEvents([]);
             setRestore((v) => v + 1);
+          });
+          source.addEventListener("acceleration", (e) => {
+            const v = JSON.parse((e as MessageEvent).data);
+            setData((p) => (p ? { ...p, state: v.state } : p));
+          });
+          source.addEventListener("onchain", (e) => {
+            const v = JSON.parse((e as MessageEvent).data);
+            setData((p) => (p ? { ...p, state: v.state } : p));
           });
           source.addEventListener("donation", (e) => {
             const v = JSON.parse((e as MessageEvent).data);
@@ -211,6 +236,11 @@ function World({
   onCue,
   onPending,
   presentation,
+  session,
+  playbackControl,
+  onDisplay,
+  onStory,
+  onIntroComplete,
 }: {
   state: State;
   events: Celebration[];
@@ -218,9 +248,14 @@ function World({
   config: Config;
   restore: number;
   onChapter: (chapter: number) => void;
-  onCue: (event: Celebration) => void;
+  onCue: (e: Celebration) => void;
   onPending: (count: number) => void;
   presentation: Presentation;
+  session: PlaybackSession | null;
+  playbackControl: PlaybackControl;
+  onDisplay: (state: State, mode: string, finished: boolean) => void;
+  onStory: (message: string) => void;
+  onIntroComplete: (cutoff: number) => Promise<Celebration[]>;
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
   const latest = useRef({
@@ -233,6 +268,11 @@ function World({
     onCue,
     onPending,
     presentation,
+    session,
+    playbackControl,
+    onDisplay,
+    onStory,
+    onIntroComplete,
   });
   latest.current = {
     state,
@@ -244,36 +284,44 @@ function World({
     onCue,
     onPending,
     presentation,
+    session,
+    playbackControl,
+    onDisplay,
+    onStory,
+    onIntroComplete,
   };
   useEffect(() => {
-    const c = ref.current!.getContext("2d")!;
+    const ctx = ref.current!.getContext("2d")!;
     let raf = 0,
-      seen = state.eventId,
-      restored = restore;
-    let trails: Trail[] = [],
-      tick = 0,
-      reportedChapter = -1;
-    const motion = new JourneyMotion(state, presentation.pace === "cinematic");
-    const queue = new CelebrationQueue(state.eventId);
+      last = 0,
+      time = 0,
+      motionTime = 0,
+      hold = 0,
+      activeUntil = 0;
+    const motion = new JourneyMotion(state, presentation.pace === "cinematic"),
+      queue = new CelebrationQueue(state.eventId);
     let visual = state,
+      seen = state.eventId,
+      restored = restore,
       skip = presentation.skip,
+      tick = 0,
+      reportedChapter = -1,
       reportedPending = -1;
+    let sessionId = "",
+      reader: ReplayReader | undefined,
+      recap: RecapTimeline | undefined,
+      sessionFinished = false,
+      joiningLive = false,
+      tailEvents: Celebration[] = [];
+    let previousCrew = new Set(state.crew),
+      previousRewards = new Set(state.rewards),
+      joins = new Map<string, number>(),
+      trails: Trail[] = [];
+    let pickupUntil = 0;
+    let lastDisplay = -1,
+      lastDisplayKey = "",
+      storyUntil = 0;
     const backgrounds = new Map<string, HTMLCanvasElement>();
-    function sceneState(chapter: number, s: State, cfg: Config): State {
-      const index = [
-        "station",
-        "spree",
-        "alexanderplatz",
-        "gallery",
-        "gate",
-        "vault",
-      ].indexOf(cfg.chapters[chapter].scene);
-      return {
-        ...s,
-        chapter: index,
-        vaultOpen: chapter === s.chapter && s.vaultOpen,
-      };
-    }
     function sceneBackground(s: State) {
       const key = `${s.chapter}/${s.vaultOpen}/${s.treasureTier}`;
       if (!backgrounds.has(key))
@@ -283,75 +331,308 @@ function World({
         );
       return backgrounds.get(key)!;
     }
+    function sceneIndex(cfg: Config, chapter: number) {
+      const scene = cfg.chapters[chapter].scene;
+      return scene === "vault"
+        ? 5
+        : [
+            "station",
+            "spree",
+            "alexanderplatz",
+            "gallery",
+            "gate",
+            "hall",
+          ].indexOf(scene);
+    }
+    function startPlayback(value: PlaybackSession, cfg: Config) {
+      sessionId = value.id;
+      time = 0;
+      motionTime = 0;
+      hold = 0;
+      activeUntil = 0;
+      tick = 0;
+      trails = [];
+      joins.clear();
+      previousCrew.clear();
+      previousRewards.clear();
+      sessionFinished = false;
+      joiningLive = false;
+      tailEvents = [];
+      visual = emptyState(cfg, state.mode);
+      motion.snap(visual);
+      queue.clear(value.kind === "replay" ? 0 : value.history.cutoff);
+      reader =
+        value.kind === "replay"
+          ? new ReplayReader(value.history.events)
+          : undefined;
+      recap =
+        value.kind === "intro"
+          ? new RecapTimeline(
+              cfg,
+              value.history.finalTotal,
+              value.history.events,
+            )
+          : undefined;
+    }
     function frame(ms: number) {
-      const now = ms / 1000;
-      const {
-        state: s,
-        events: e,
-        reduced: r,
-        config: cfg,
-        restore: epoch,
-      } = latest.current;
-      const settings = latest.current.presentation;
+      const l = latest.current,
+        s = l.state,
+        r = l.reduced,
+        p = l.session,
+        control = l.playbackControl;
+      const cfg = p?.history.config ?? l.config;
+      const dt = last ? Math.min(0.1, (ms - last) / 1000) : 0;
+      last = ms;
+      if (p && p.id !== sessionId) startPlayback(p, cfg);
+      if (!p && sessionId) {
+        sessionId = "";
+        reader = undefined;
+        recap = undefined;
+        sessionFinished = false;
+        visual = s;
+        motion.snap(s);
+        queue.clear(s.eventId);
+        previousCrew = new Set(s.crew);
+        previousRewards = new Set(s.rewards);
+        trails = [];
+      }
+      const replaying = !!p && (!sessionFinished || p.kind === "replay");
+      const step =
+        replaying && control.paused ? 0 : dt * (replaying ? control.speed : 1);
+      time += step;
+      if (hold > 0) hold = Math.max(0, hold - step);
+      else motionTime += step;
       const snap =
-        epoch !== restored || s.eventId < seen || settings.skip !== skip;
-      if (snap) {
+        l.restore !== restored ||
+        s.eventId < seen ||
+        l.presentation.skip !== skip;
+      if (snap && !replaying) {
         trails = [];
         seen = s.eventId;
-        restored = epoch;
-        skip = settings.skip;
+        restored = l.restore;
+        skip = l.presentation.skip;
         queue.clear(s.eventId);
         visual = s;
         motion.snap(s);
+        previousCrew = new Set(s.crew);
+        previousRewards = new Set(s.rewards);
+        joins.clear();
       }
-      queue.enqueue(e);
-      const cue = queue.next(
-        now,
-        !motion.sample(now).walking,
-        settings.cueSeconds,
-      );
-      if (cue) {
-        visual = { ...s, ...progression(cue.total, cfg), total: cue.total };
-        trails.push({
-          born: now,
-          index: tick++,
-          amount: cue.amount,
-          milestone: cue.level > cue.previousLevel,
-          duration: settings.pace === "cinematic" ? 3.2 : 1.6,
-        });
-        latest.current.onCue(cue);
+      if (replaying) {
+        restored = l.restore;
+        skip = l.presentation.skip;
+      }
+      let pose = motion.sample(motionTime),
+        mode = "live",
+        finished = false;
+      if (p?.kind === "intro" && !sessionFinished && recap) {
+        mode = "intro";
+        if (r) time = Math.max(time, recap.duration);
+        pose = recap.sample(time);
+        for (const event of recap.due(time))
+          if (event.kind === "donation") {
+            tick++;
+            trails.push({
+              born: time,
+              index: event.id,
+              amount: event.payload.amount,
+              milestone: false,
+              duration: 0.7,
+              visitor: false,
+            });
+          }
+        const chapter = pose.chapter,
+          start = cfg.chapters[chapter].threshold,
+          end = cfg.chapters[chapter + 1]?.threshold ?? cfg.goal;
+        const total = recap.finished(time)
+          ? p.history.finalTotal
+          : Math.round(start + (end - start) * pose.progress);
+        visual = {
+          ...s,
+          ...progression(total, cfg),
+          total,
+          onchain: recap.pending(),
+        };
+        if (recap.finished(time) && !joiningLive) {
+          joiningLive = true;
+          l.onIntroComplete(p.history.cutoff)
+            .then((tail) => {
+              if (latest.current.session?.id !== p.id) return;
+              tailEvents = tail;
+              sessionFinished = true;
+              visual = {
+                ...latest.current.state,
+                ...progression(p.history.finalTotal, cfg),
+                total: p.history.finalTotal,
+              };
+              motion.snap(visual);
+              queue.clear(p.history.cutoff);
+              seen = p.history.cutoff;
+              try {
+                localStorage.setItem("pif-intro-" + s.eventKey, "done");
+              } catch {}
+            })
+            .catch(() => {
+              joiningLive = false;
+            });
+        }
+      } else {
+        const ready = !pose.walking && hold === 0 && time >= activeUntil;
+        if (p?.kind === "replay" && reader) {
+          mode = "replay";
+          const event = reader.next(
+            time,
+            ready && queue.count === 0,
+            l.presentation.cueSeconds,
+          );
+          if (event?.kind === "donation")
+            queue.enqueue([{ id: event.id, ...event.payload }]);
+          visual = { ...visual, onchain: reader.pending() };
+        } else
+          queue.enqueue(
+            [...tailEvents, ...l.events].sort((a, b) => a.id - b.id),
+          );
+        const cue = queue.next(time, ready, l.presentation.cueSeconds);
+        if (cue) {
+          visual = {
+            ...visual,
+            ...progression(cue.total, cfg),
+            total: cue.total,
+            eventId: cue.id,
+            count: visual.count + 1,
+          };
+          const duration = Math.min(3.2, l.presentation.cueSeconds);
+          trails.push({
+            born: time,
+            index: cue.id,
+            amount: cue.amount,
+            milestone: cue.level > cue.previousLevel,
+            duration,
+            visitor: true,
+          });
+          tick++;
+          activeUntil = time + duration;
+          l.onCue(cue);
+        }
+        motion.setPace(l.presentation.pace === "cinematic");
+        motion.update(visual, motionTime, r);
+        pose = motion.sample(motionTime);
+        if (
+          p?.kind === "replay" &&
+          reader?.finished(time) &&
+          ready &&
+          queue.count === 0
+        ) {
+          finished = true;
+          mode = "replay";
+          if (control.loop && !control.paused) startPlayback(p, cfg);
+        }
+        if (mode === "live") visual = { ...visual, onchain: s.onchain };
+      }
+      const start = cfg.chapters[pose.chapter].threshold,
+        end = cfg.chapters[pose.chapter + 1]?.threshold ?? cfg.goal;
+      const shownTotal =
+        pose.chapter === visual.chapter && !pose.walking
+          ? visual.total
+          : Math.round(start + (end - start) * pose.progress);
+      const shown = {
+        ...visual,
+        ...progression(shownTotal, cfg),
+        total: shownTotal,
+        chapter: sceneIndex(cfg, pose.chapter),
+      };
+      const newCrew = shown.crew.filter((id) => !previousCrew.has(id));
+      const newRewards = shown.rewards.filter((id) => !previousRewards.has(id));
+      if (newCrew.length) {
+        const members = cfg.chapters
+          .map((_, i) => chapterRecruit(cfg, i))
+          .filter((member) => newCrew.includes(member.id));
+        for (const member of members) joins.set(member.id, time);
+        l.onStory(
+          members
+            .map((member) => `${member.name} joins the crew · ${member.role}`)
+            .join(" / "),
+        );
+        storyUntil = time + 2.7;
+        if (!r && mode !== "intro") hold = Math.max(hold, 0.35);
+      } else if (newRewards.length) {
+        pickupUntil = time + 1.4;
+        l.onStory(
+          "Collected: " +
+            newRewards
+              .map(
+                (x) =>
+                  ({
+                    hat: "orange cap",
+                    sunglasses: "shades",
+                    shirt: "painted bitcoin++ shirt",
+                    bag: "community satchel",
+                    key: "hall key",
+                  })[x] ?? x,
+              )
+              .join(" · "),
+        );
+        storyUntil = time + 2.5;
+        if (!r && mode !== "intro") hold = Math.max(hold, 0.35);
+      }
+      previousCrew = new Set(shown.crew);
+      previousRewards = new Set(shown.rewards);
+      if (storyUntil && time > storyUntil) {
+        l.onStory("");
+        storyUntil = 0;
+      }
+      if (pose.chapter !== reportedChapter) {
+        reportedChapter = pose.chapter;
+        l.onChapter(pose.chapter);
       }
       if (queue.count !== reportedPending) {
         reportedPending = queue.count;
-        latest.current.onPending(queue.count);
+        l.onPending(queue.count);
       }
-      seen = Math.max(seen, s.eventId);
-      motion.setPace(settings.pace === "cinematic");
-      motion.update(visual, now, r || snap);
-      const pose = motion.sample(now);
-      if (pose.chapter !== reportedChapter) {
-        reportedChapter = pose.chapter;
-        latest.current.onChapter(pose.chapter);
-      }
-      const outgoing = sceneState(pose.chapter, visual, cfg);
       const incoming =
         pose.nextChapter === undefined
           ? undefined
-          : sceneState(pose.nextChapter, visual, cfg);
+          : {
+              ...shown,
+              ...progression(cfg.chapters[pose.nextChapter].threshold, cfg),
+              chapter: sceneIndex(cfg, pose.nextChapter),
+            };
       const x = incoming
-        ? courierX(outgoing.chapter, 1) * (1 - pose.slide) +
+        ? courierX(shown.chapter, 1) * (1 - pose.slide) +
           courierX(incoming.chapter, 0) * pose.slide
-        : courierX(outgoing.chapter, pose.progress);
-      trails = trails.filter((trail) => now - trail.born < trail.duration + 2);
-      render(c, sceneBackground(outgoing), outgoing, now, trails, r, {
+        : courierX(shown.chapter, pose.progress);
+      trails = trails
+        .filter((trail) => time - trail.born < trail.duration + 2)
+        .slice(-24);
+      const members = cfg.chapters
+        .map((_, i) => chapterRecruit(cfg, i))
+        .filter((member) => shown.crew.includes(member.id));
+      render(ctx, sceneBackground(shown), shown, time, trails, r, {
         x,
+        pickup: time < pickupUntil,
         walking: pose.walking,
         slide: pose.slide,
+        crew: members,
+        joins,
+        waiting: shown.crew.includes(chapterRecruit(cfg, pose.chapter).id)
+          ? undefined
+          : chapterRecruit(cfg, pose.chapter),
         incoming: incoming
           ? { bg: sceneBackground(incoming), state: incoming }
           : undefined,
       });
-      // Useful to inspect the amount-based position without exposing payment details.
+      const display = {
+        ...visual,
+        ...progression(visual.total, cfg),
+        crew: shown.crew,
+        rewards: shown.rewards,
+      };
+      const key = `${mode}/${display.total}/${display.crew.join(",")}/${JSON.stringify(display.onchain)}/${finished}`;
+      if (key !== lastDisplayKey && time - lastDisplay > 0.1) {
+        lastDisplayKey = key;
+        lastDisplay = time;
+        l.onDisplay(display, mode, finished);
+      }
       ref.current!.dataset.chapter = String(pose.chapter);
       ref.current!.dataset.progress = String(pose.progress);
       ref.current!.dataset.courierX = String(x);
@@ -359,6 +640,9 @@ function World({
       ref.current!.dataset.acknowledged = String(tick);
       ref.current!.dataset.activeTrails = String(trails.length);
       ref.current!.dataset.pending = String(queue.count);
+      ref.current!.dataset.crew = shown.crew.join(",");
+      ref.current!.dataset.playback = mode;
+      seen = Math.max(seen, s.eventId);
       raf = requestAnimationFrame(frame);
     }
     raf = requestAnimationFrame(frame);
@@ -369,13 +653,106 @@ function World({
       ref={ref}
       width="640"
       height="300"
-      aria-label="Animated pixel-art courier exploring Berlin"
+      aria-label="Animated pixel-art courier and crew gathering Berlin for bitcoin++"
       role="img"
     />
   );
 }
+async function history(after = 0, cutoff?: number): Promise<HistoryPage> {
+  const first = await api<HistoryPage>(
+    `/history?after=${after}${cutoff === undefined ? "" : `&cutoff=${cutoff}`}`,
+  );
+  let page = first;
+  const events = [...first.events];
+  while (page.more) {
+    page = await api<HistoryPage>(
+      `/history?after=${page.after}&cutoff=${first.cutoff}`,
+    );
+    events.push(...page.events);
+  }
+  return { ...first, events, more: false, after: page.after };
+}
+function PendingBoard({ outputs = [] }: { outputs?: Observation[] }) {
+  const waiting = outputs.filter(
+      (o) => o.status === "pending" && o.acceleration !== "accepted",
+    ),
+    express = outputs.filter(
+      (o) => o.status === "pending" && o.acceleration === "accepted",
+    );
+  return (
+    <div className="departures">
+      <img src="/branding/mempool.png" alt="Mempool" />
+      <div>
+        <b>Waiting for a block</b>
+        <span className="pending-particles">
+          {waiting.slice(0, 6).map((o) => (
+            <i key={o.key}>✦</i>
+          ))}
+        </span>
+        <span>
+          {sats(waiting.reduce((n, o) => n + o.amount, 0))} sats ·{" "}
+          {waiting.length} outputs
+        </span>
+      </div>
+      <div>
+        <b>Express ✦</b>
+        <span className="pending-particles express">
+          {express.slice(0, 6).map((o) => (
+            <i key={o.key}>✦</i>
+          ))}
+        </span>
+        <span>
+          {sats(express.reduce((n, o) => n + o.amount, 0))} sats ·{" "}
+          {express.length} outputs
+        </span>
+      </div>
+      <small>Pending sats · join the pool after confirmation</small>
+    </div>
+  );
+}
 function Screen({ presenting = false }: { presenting?: boolean }) {
   const { data, connected, error, events, restore } = useJourney();
+  const [session, setSession] = useState<PlaybackSession | null>(null),
+    [playbackControl, setPlaybackControl] = useState<PlaybackControl>({
+      paused: false,
+      speed: 1,
+      loop: false,
+    }),
+    [display, setDisplay] = useState<State | null>(null),
+    [playbackMode, setPlaybackMode] = useState("live"),
+    [finished, setFinished] = useState(false),
+    [story, setStory] = useState(""),
+    [playbackError, setPlaybackError] = useState("");
+  const [preparing, setPreparing] = useState(
+    !new URLSearchParams(location.search).has("live"),
+  );
+  const initialized = useRef("");
+  async function start(kind: "intro" | "replay") {
+    setPreparing(true);
+    try {
+      const h = await history();
+      setSession({ id: crypto.randomUUID(), kind, history: h });
+      setPlaybackControl((p) => ({ ...p, paused: false }));
+    } catch (e) {
+      setPlaybackError((e as Error).message);
+    } finally {
+      setPreparing(false);
+    }
+  }
+  useEffect(() => {
+    if (!data || initialized.current === data.state.eventKey) return;
+    initialized.current = data.state.eventKey ?? "event";
+    const q = new URLSearchParams(location.search);
+    if (q.has("replay") || data.state.eventMode === "archive")
+      void start("replay");
+    else if (
+      q.has("intro") ||
+      (!q.has("live") &&
+        !localStorage.getItem("pif-intro-" + data.state.eventKey))
+    )
+      void start("intro");
+    else setPreparing(false);
+  }, [data?.state.eventKey, data?.state.eventMode]);
   const [visualChapter, setVisualChapter] = useState<number | null>(null);
   const [fullscreen, setFullscreen] = useState(false),
     [controls, setControls] = useState(true),
@@ -482,13 +859,18 @@ function Screen({ presenting = false }: { presenting?: boolean }) {
   useEffect(() => () => clearTimeout(noticeTimer.current), []);
   if (!data)
     return <div className="loading">{error || "Packing the satchel…"}</div>;
-  const { config, state } = data;
+  const config =
+    session && playbackMode !== "live" ? session.history.config : data.config;
+  const state = playbackMode === "replay" && display ? display : data.state;
   const c = config.chapters[state.chapter];
   const visible = config.chapters[visualChapter ?? state.chapter];
-  const url = config.publicUrl + BASE + "/donate";
+  const url =
+    config.publicUrl +
+    BASE +
+    (data.state.eventMode === "archive" ? "/screen?replay=1" : "/donate");
   return (
     <main
-      className={`screen ${presenting ? "presentation" : "overview"} ${controls ? "controls-visible" : "controls-hidden"}`}
+      className={`screen ${presenting ? "presentation" : "overview"} ${controls || playbackMode === "replay" ? "controls-visible" : "controls-hidden"}`}
       onPointerMove={presenting ? reveal : undefined}
       onFocusCapture={presenting ? reveal : undefined}
       onKeyDown={presenting ? reveal : undefined}
@@ -521,18 +903,50 @@ function Screen({ presenting = false }: { presenting?: boolean }) {
       </section>
       <section className="adventure">
         <div className="scene">
-          <World
-            state={state}
-            events={events}
-            reduced={reduced}
-            config={config}
-            restore={restore}
-            onChapter={setVisualChapter}
-            onCue={celebrate}
-            onPending={setPending}
-            presentation={data.presentation ?? defaultPresentation}
-          />
+          {!preparing && (
+            <World
+              state={data.state}
+              events={events}
+              reduced={reduced}
+              config={config}
+              restore={restore}
+              onChapter={setVisualChapter}
+              onCue={celebrate}
+              onPending={setPending}
+              presentation={data.presentation ?? defaultPresentation}
+              session={session}
+              playbackControl={playbackControl}
+              onDisplay={(s, m, f) => {
+                setDisplay(s);
+                setPlaybackMode(m);
+                setFinished(f);
+              }}
+              onStory={setStory}
+              onIntroComplete={async (cutoff) =>
+                (await history(cutoff)).events
+                  .filter((e) => e.kind === "donation")
+                  .map((e) => ({ ...e.payload, id: e.id }))
+              }
+            />
+          )}
           <div className="scene-title">
+            {preparing && (
+              <p className="playback-label">
+                Preparing the recorded adventure…
+              </p>
+            )}
+            {playbackMode === "intro" && (
+              <p className="playback-label">
+                Catching up to the live adventure
+              </p>
+            )}
+            {playbackMode === "replay" && (
+              <p className="playback-label">
+                Event replay {finished ? "· complete" : ""}
+              </p>
+            )}
+            {story && <p className="story-caption">{story}</p>}
+
             <span className="chapter-label">
               CHAPTER{" "}
               {String((visualChapter ?? state.chapter) + 1).padStart(2, "0")} /
@@ -549,8 +963,24 @@ function Screen({ presenting = false }: { presenting?: boolean }) {
           <div className="scene-bottom">
             <span className="location-pin">⌖ BERLIN, DE</span>
             <span className="inventory">
-              {state.rewards.length ? (
-                state.rewards.map((x) => (
+              {(display?.crew ?? state.crew).map((id) => {
+                const recruit = config.chapters
+                  .map((_, i) => chapterRecruit(config, i))
+                  .find((r) => r.id === id);
+                return (
+                  <span key={id} title={recruit?.role}>
+                    {recruit?.name}
+                  </span>
+                );
+              })}
+              {(playbackMode !== "live"
+                ? (display?.rewards ?? [])
+                : state.rewards
+              ).length ? (
+                (playbackMode !== "live"
+                  ? (display?.rewards ?? [])
+                  : state.rewards
+                ).map((x) => (
                   <span key={x} title={x}>
                     {
                       {
@@ -591,7 +1021,7 @@ function Screen({ presenting = false }: { presenting?: boolean }) {
                             sunglasses: "shades",
                             shirt: "tee",
                             bag: "orange bag",
-                            key: "treasure key",
+                            key: "hall key",
                           })[reward] ?? reward,
                       )
                       .join(" · ")}
@@ -602,7 +1032,21 @@ function Screen({ presenting = false }: { presenting?: boolean }) {
           )}
         </div>
         <aside className="pool">
-          <p className="eyebrow">COMMUNITY PRIZE POOL RAISED</p>
+          <p className="eyebrow">
+            {playbackMode === "replay"
+              ? "RAISED SO FAR IN THIS REPLAY"
+              : "COMMUNITY PRIZE POOL RAISED"}
+          </p>
+          {playbackMode === "replay" && (
+            <p>
+              Recorded event total: {sats(session?.history.finalTotal ?? 0)}{" "}
+              sats
+            </p>
+          )}
+          <PendingBoard
+            outputs={(playbackMode === "live" ? data.state : display)?.onchain}
+          />
+
           <div className="total">
             {sats(state.total)}
             <span>sats</span>
@@ -610,7 +1054,7 @@ function Screen({ presenting = false }: { presenting?: boolean }) {
           <div className="chapter-progress">
             <div>
               <span>
-                {state.vaultOpen ? "The vault is open ✦" : "Next chapter"}
+                {state.vaultOpen ? "The hall is open ✦" : "Next chapter"}
               </span>
               <b>
                 {state.vaultOpen
@@ -621,9 +1065,9 @@ function Screen({ presenting = false }: { presenting?: boolean }) {
             <progress max="1" value={state.progress} />
             <p>
               {state.vaultOpen
-                ? "Every contribution adds to our shared treasure."
+                ? "Every contribution adds to our community build night."
                 : (config.chapters[state.chapter + 1]?.name ??
-                  "Open the community vault")}
+                  "Open the hackathon hall")}
             </p>
           </div>
           <div className="qr-panel">
@@ -656,7 +1100,7 @@ function Screen({ presenting = false }: { presenting?: boolean }) {
           <div className="presentation-progress">
             <span>
               {state.vaultOpen
-                ? "The vault is open ✦"
+                ? "The hall is open ✦"
                 : `${c.name} · ${sats(state.remaining)} sats to go`}
             </span>
             <progress
@@ -677,7 +1121,7 @@ function Screen({ presenting = false }: { presenting?: boolean }) {
           className="overall-progress"
           max={config.goal}
           value={Math.min(state.total, config.goal)}
-          aria-label="Total sats toward the community vault"
+          aria-label="Total sats toward the hackathon hall"
         />
         <div className="stops">
           {config.chapters.map((ch, i) => (
@@ -696,7 +1140,7 @@ function Screen({ presenting = false }: { presenting?: boolean }) {
                     "Alexanderplatz",
                     "East Side Gallery",
                     "Brandenburg Gate",
-                    "Community Vault",
+                    "Hackathon Hall",
                   ][i]
                 }
               </span>
@@ -704,6 +1148,59 @@ function Screen({ presenting = false }: { presenting?: boolean }) {
           ))}
         </div>
       </section>
+      <div className="playback-controls">
+        {playbackMode === "replay" ? (
+          <>
+            <button
+              onClick={() =>
+                setPlaybackControl((p) => ({ ...p, paused: !p.paused }))
+              }
+            >
+              {playbackControl.paused ? "Play" : "Pause"}
+            </button>
+            <button onClick={() => void start("replay")}>Restart</button>
+            <label>
+              Speed{" "}
+              <select
+                value={playbackControl.speed}
+                onChange={(e) =>
+                  setPlaybackControl((p) => ({
+                    ...p,
+                    speed: Number(e.target.value),
+                  }))
+                }
+              >
+                {[0.5, 1, 2, 4].map((n) => (
+                  <option key={n} value={n}>
+                    {n}×
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <input
+                type="checkbox"
+                checked={playbackControl.loop}
+                onChange={(e) =>
+                  setPlaybackControl((p) => ({ ...p, loop: e.target.checked }))
+                }
+              />{" "}
+              Loop
+            </label>
+          </>
+        ) : (
+          <>
+            <button onClick={() => void start("intro")}>
+              Replay introduction
+            </button>
+            <a href={BASE + "/screen?live=1"}>Direct to live ↗</a>
+            <button onClick={() => void start("replay")}>
+              Replay recorded adventure
+            </button>
+          </>
+        )}
+        {playbackError && <span role="alert">{playbackError}</span>}
+      </div>
       <footer>
         <span>SMALL PAYMENTS. SHARED POSSIBILITIES.</span>
         <div>
@@ -745,18 +1242,142 @@ function Screen({ presenting = false }: { presenting?: boolean }) {
     </main>
   );
 }
+function ExpressCheckout({
+  contribution,
+  enabled,
+}: {
+  contribution: Contribution;
+  enabled: boolean;
+}) {
+  const [quote, setQuote] = useState<AccelerationQuote | null>(null),
+    [attempt, setAttempt] = useState<AccelerationAttempt | null>(null),
+    [error, setError] = useState(""),
+    [busy, setBusy] = useState(false);
+  const outputs =
+    contribution.onchain?.filter((o) => o.status === "pending") ?? [];
+  async function request(path: string, body: unknown) {
+    setBusy(true);
+    setError("");
+    try {
+      return await api<any>(
+        "/contributions/" + contribution.id + "/acceleration/" + path,
+        body,
+      );
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  if (!outputs.length) return null;
+  const active = contribution.acceleration ?? attempt;
+  return (
+    <section className="express-checkout">
+      <img src="/branding/mempool.png" alt="Mempool" />
+      <h3>Waiting for a block</h3>
+      <p>
+        {sats(outputs.reduce((n, o) => n + o.amount, 0))} sats pending.
+        Confirmed funds alone move the adventure.
+      </p>
+      {outputs.map((o) => (
+        <p key={o.key}>
+          <a
+            target="_blank"
+            rel="noreferrer"
+            href={"https://mempool.space/tx/" + o.txid}
+          >
+            View transaction ↗
+          </a>
+          {enabled && !active && (
+            <button
+              disabled={busy}
+              onClick={async () => {
+                const q = await request("quote", { txid: o.txid });
+                if (q) setQuote(q);
+              }}
+            >
+              Take the Express
+            </button>
+          )}
+        </p>
+      ))}
+      {quote && !active && (
+        <>
+          <p>
+            Acceleration price: <b>{sats(quote.totalSats)} sats</b> (includes
+            all service fees). Separate from your donation.
+          </p>
+          <button
+            disabled={busy}
+            onClick={async () => {
+              const a = await request("invoice", { quoteId: quote.id });
+              if (a) setAttempt(a);
+            }}
+          >
+            Accept price · get Lightning invoice
+          </button>
+        </>
+      )}
+      {active && (
+        <>
+          <p>
+            Express: {active.status} · {sats(active.totalSats)} sats
+            acceleration fee
+          </p>
+          {active.status === "invoice" &&
+            !active.invoiceId.startsWith("demo:") && (
+              <>
+                <QR value={"lightning:" + active.invoice} size={224} />
+                <a className="primary" href={"lightning:" + active.invoice}>
+                  Pay acceleration invoice ↗
+                </a>
+                <p>
+                  Only provider acceptance moves this payment to Express.
+                  Confirmation still advances the adventure.
+                </p>
+              </>
+            )}
+        </>
+      )}
+      {active?.invoiceId.startsWith("demo:") && (
+        <p>
+          Simulated invoice. No wallet payment needed; use operator controls to
+          accept or fail.
+        </p>
+      )}
+      {!enabled && (
+        <p>
+          Express is currently unavailable. Your donation remains tracked
+          normally.
+        </p>
+      )}
+      {error && <p role="alert">{error}</p>}
+    </section>
+  );
+}
 function Donate() {
   const { data, connected, error } = useJourney();
-  const [amount, setAmount] = useState(5000),
+  const [amount, setAmount] = useState(1),
     [name, setName] = useState(""),
     [method, setMethod] = useState<Method>("lightning"),
     [c, setC] = useState<Contribution | null>(null),
     [busy, setBusy] = useState(false),
     [message, setMessage] = useState("");
   useEffect(() => {
+    if (data)
+      setAmount(giftPresets(data.config)[1] ?? giftPresets(data.config)[0]);
+  }, [data?.config]);
+  useEffect(() => {
     if (data && !data.config.methods.includes(method))
       setMethod(data.config.methods[0]);
   }, [data?.config, method]);
+  useEffect(() => {
+    const id = new URLSearchParams(location.search).get("request");
+    if (id)
+      void api<Contribution>("/contributions/" + encodeURIComponent(id))
+        .then(setC)
+        .catch((e) => setMessage(e.message));
+  }, []);
   useEffect(() => {
     if (!c) return;
     const timer = setInterval(
@@ -772,7 +1393,17 @@ function Donate() {
     setBusy(true);
     setMessage("");
     try {
-      setC(await api<Contribution>("/contributions", { amount, name, method }));
+      const request = await api<Contribution>("/contributions", {
+        amount,
+        name,
+        method,
+      });
+      setC(request);
+      window.history.replaceState(
+        null,
+        "",
+        BASE + "/donate?request=" + encodeURIComponent(request.id),
+      );
     } catch (e) {
       setMessage((e as Error).message);
     } finally {
@@ -810,6 +1441,10 @@ function Donate() {
                   ? "INVOICE EXPIRED"
                   : "A LITTLE MAGIC, ON ITS WAY"}
             </p>
+            <ExpressCheckout
+              contribution={c}
+              enabled={data.accelerationEnabled}
+            />
             <h2>
               {c.status === "paid"
                 ? "Thank you" + (c.name ? ", " + c.name : "") + "."
@@ -896,6 +1531,7 @@ function Donate() {
               className="secondary"
               onClick={() => {
                 setC(null);
+                window.history.replaceState(null, "", BASE + "/donate");
                 setMessage("");
               }}
             >
@@ -904,6 +1540,14 @@ function Donate() {
                 ? "Contribute again"
                 : "Back to contribution"}
             </button>
+          </>
+        ) : data.state.eventMode === "archive" ? (
+          <>
+            <h2>The event is complete.</h2>
+            <p>{sats(data.state.total)} sats raised together.</p>
+            <a className="primary" href={BASE + "/screen?replay=1"}>
+              Replay our Berlin adventure ↗
+            </a>
           </>
         ) : (
           <>
@@ -922,7 +1566,7 @@ function Donate() {
               <span>sats</span>
             </div>
             <div className="amounts">
-              {[1000, 5000, 10000, 50000].map((n) => (
+              {giftPresets(data.config).map((n) => (
                 <button
                   className={n === amount ? "selected" : ""}
                   key={n}
@@ -1000,7 +1644,7 @@ function Admin() {
   const [token, setToken] = useState(""),
     [logged, setLogged] = useState(false),
     [health, setHealth] = useState<any>(null),
-    [amount, setAmount] = useState(5000),
+    [amount, setAmount] = useState(1),
     [name, setName] = useState("Berlin community"),
     [message, setMessage] = useState(""),
     [busy, setBusy] = useState(false),
@@ -1010,6 +1654,10 @@ function Admin() {
     [cueSeconds, setCueSeconds] = useState(3.6),
     [volume, setVolume] = useState(0.45);
   const settingsLoaded = useRef(false);
+  useEffect(() => {
+    if (data)
+      setAmount(giftPresets(data.config)[1] ?? giftPresets(data.config)[0]);
+  }, [data?.config]);
   async function refresh() {
     try {
       const next = await api<any>("/admin/health");
@@ -1092,6 +1740,22 @@ function Admin() {
                 receipts
               </p>
               <p>{health?.screenConnections} connected pages</p>
+              <button
+                className="secondary"
+                disabled={busy}
+                onClick={() =>
+                  act("event-mode", {
+                    mode:
+                      data?.state.eventMode === "archive" ? "live" : "archive",
+                  })
+                }
+              >
+                {data?.state.eventMode === "archive"
+                  ? "Reopen live contributions"
+                  : "Switch to event archive"}
+              </button>
+              <a href={BASE + "/screen?live=1"}>Present directly live ↗</a>
+              <a href={BASE + "/screen?replay=1"}>Preview recorded replay ↗</a>
               <p>
                 Last reconciliation:{" "}
                 {health?.lastSync
@@ -1113,6 +1777,40 @@ function Admin() {
             </section>
             <section className="admin-card">
               <p className="eyebrow">DEMO CONTROLS</p>
+              <button
+                className="secondary"
+                disabled={busy || health?.mode !== "demo"}
+                onClick={() =>
+                  act("onchain", { action: "detect", amount, name })
+                }
+              >
+                Detect pending Bitcoin
+              </button>
+              {data?.state.onchain?.map((o) => (
+                <div className="pending-control" key={o.key}>
+                  <b>
+                    {sats(o.amount)} sats · {o.status} {o.acceleration ?? ""}
+                  </b>
+                  {o.status === "pending" &&
+                    [
+                      "quote",
+                      "invoice",
+                      "accept",
+                      "fail",
+                      "confirm",
+                      "replace",
+                      "drop",
+                    ].map((action) => (
+                      <button
+                        key={action}
+                        disabled={busy || health?.mode !== "demo"}
+                        onClick={() => act("onchain", { action, key: o.key })}
+                      >
+                        {action}
+                      </button>
+                    ))}
+                </div>
+              ))}
               <label htmlFor="sim-amount">Donation amount in sats</label>
               <input
                 id="sim-amount"
@@ -1138,7 +1836,7 @@ function Admin() {
                 onChange={(e) => setBurstCount(Number(e.target.value))}
               />
               <div className="preset-row">
-                {[1000, 10000, 50000, 250000].map((n) => (
+                {(data ? giftPresets(data.config) : []).map((n) => (
                   <button
                     className="secondary"
                     key={n}
@@ -1191,7 +1889,7 @@ function Admin() {
                   })
                 }
               >
-                Travel to the treasure room
+                Travel to the hackathon hall
               </button>
               <button
                 className="danger"

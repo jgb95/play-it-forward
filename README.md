@@ -2,7 +2,7 @@
 
 **A little kindness. A long way.** An open-source, self-hostable donation adventure for bitcoin++ Berlin, payments edition.
 
-A shared human courier explores six Berlin locations while contributions grow a real community bonus prize pool. Donations unlock orange accessories, ambient celebrations, and a community treasure vault. All progression is driven by **cumulative sats received**, never by the number of donations. Milestones do not spend or reserve funds.
+A shared human courier explores six Berlin locations while contributions grow a real community bonus prize pool. Donations unlock orange accessories, ambient celebrations, and a hackathon hall. All progression is driven by **cumulative sats received**, never by the number of donations. Milestones do not spend or reserve funds.
 
 ## Run the playable demo
 
@@ -36,12 +36,12 @@ For phone access over a LAN, bind the server with `HOST=0.0.0.0` and set `PUBLIC
 | 150,000 | Alexanderplatz | Sunglasses |
 | 350,000 | East Side Gallery | bitcoin++ shirt |
 | 700,000 | Brandenburg Gate | Orange bag |
-| 1,250,000 | Closed community vault | Treasure key |
+| 1,250,000 | Hackathon hall entrance | Hall key |
 | 2,000,000 | Vault opens | Shared treasure |
 
-A donation gets its own light trail even when it crosses no milestone. Bursts play one named celebration at a time, with varied colored light trails and a short musical phrase when sound is enabled; accounting and the exact total update immediately. A large gift crosses intermediate scenes in a short montage and awards all earned accessories. The open vault continues to accumulate treasure in visual tiers based on sats, with an unlimited exact pool total up to JavaScript's safe integer limit.
+A donation gets its own light trail even when it crosses no milestone. Bursts play one named celebration at a time, with varied colored light trails and a short musical phrase when sound is enabled; accounting and the exact total update immediately. A large gift crosses intermediate scenes in a short montage and awards all earned accessories. The open hall continues to accumulate treasure in visual tiers based on sats, with an unlimited exact pool total up to JavaScript's safe integer limit.
 
-The bottom progress bar measures sats toward the vault; the chapter tracker measures sats between the current and next milestone. The journey dots identify the six places. The operator's receipt count is diagnostic only.
+The bottom progress bar measures sats toward the hall; the chapter tracker measures sats between the current and next milestone. The journey dots identify the six places. The operator's receipt count is diagnostic only.
 
 ## Configure an event
 
@@ -87,7 +87,7 @@ For manual UI checks, open the screen and mobile page together; send a 1,000-sat
 
 ## Current limits
 
-This is a hackathon prototype, with a working simulated game and a Bark receive adapter. Lightning settlement was verified with a 5,000-sat Phoenix payment on a Linux VPS, including restart and duplicate reconciliation checks. Bitcoin and Ark receiving APIs were checked on mainnet without funded settlement; funded signet coverage and the physical venue QR scan remain operator checks. A one-confirmation Bitcoin credit is treated as durable; automatic reorg reversals are not implemented. No spending, refund, payout, Cashu, voting, or acceleration UI is included.
+This is a hackathon prototype, with a working simulated game and a Bark receive adapter. Lightning settlement was verified with a 5,000-sat Phoenix payment on a Linux VPS, including restart and duplicate reconciliation checks. Bitcoin and Ark receiving APIs were checked on mainnet without funded settlement; funded signet coverage and the physical venue QR scan remain operator checks. A one-confirmation Bitcoin credit is treated as durable; automatic reorg reversals are not implemented. No organizer spending, refund, payout, Cashu or voting is included. Live Express remains disabled pending a donor-paid verification test.
 
 MIT licensed original code and procedural art. Bundled DM Sans and IBM Plex Mono fonts retain their upstream SIL Open Font License. bitcoin++ branding remains the event's branding.
 
@@ -97,10 +97,31 @@ Open `/` for the overview and select **Present adventure** to open `/screen`. Th
 
 Dark mode is the default. The header theme button switches every page between light and dark and remembers the choice in this browser. Sound remains off by default. Motion respects the system reduced-motion preference and can also be switched off in the presentation footer.
 
-The courier walks from left to right according to **sats within the current chapter**, then the camera slides into the next scene. Quiet periods use a planted-foot idle pose. Cinematic travel is the default, with a multi-chapter montage capped at 18 seconds. The operator can choose the original snappy pace (four-second montage), adjust celebration spacing and sound volume, or skip the remaining visual queue; totals and rewards update immediately. Loading or reconnecting restores the current position without replaying old travel. Beyond the goal, the courier stays beside the open vault while treasure continues to grow.
+The courier walks from left to right according to **sats within the current chapter**, then the camera slides into the next scene. Quiet periods use a planted-foot idle pose. Cinematic travel is the default, with a multi-chapter montage capped at 18 seconds. The operator can choose the original snappy pace (four-second montage), adjust celebration spacing and sound volume, or skip the remaining visual queue; totals and rewards update immediately. Loading or reconnecting restores the current position without replaying old travel. Beyond the goal, the courier stays beside the open hall while treasure continues to grow.
 
 ### Rehearsal and movie controls
 
 `/rehearsal/screen`, `/rehearsal/donate`, and `/rehearsal/admin` always use a separate simulated ledger, even when the main event runs on mainnet. The admin token is shared, but rehearsal cookies and money are isolated. Network selection for the main event remains a server environment setting and requires a restart.
 
 The director desk can run a 30–1,800-second movie that schedules simulated gifts through every remaining milestone and reaches the exact goal at the chosen duration. Start below the goal; reset only the rehearsal pool to run it again. Pause stops new movie gifts while existing celebrations finish. Manual gifts count toward the same target. Presentation settings and movie scheduling are temporary: restarting stops the movie and restores default pace. Receipts and totals remain durable.
+
+
+## Crew, recording and playback
+
+Each chapter can configure `recruit: { id, name, role, sprite }`. Supported sprites: volunteer, tinkerer, hacker, artist, builder, host. Recruitment is derived at `start + ceil((end-start)/2)`, including an odd-sized interval. The last chapter ends at `goal`. Legacy `vault` scene identifiers render the hall. Optional `contributionPresets` configure the checkout buttons; otherwise amounts derive from the goal.
+
+The first visit recaps the recorded adventure in at most 30 seconds. Every receipt gets a pulse; dense history blends particles. Completion is remembered locally per event. `/screen?live=1` bypasses the recap for operators. `/screen?intro=1` requests it again. `/screen?replay=1` runs a visitor-local historical replay with pause, speed, restart and optional loop. Playback uses a fixed journal cutoff and the captured story configuration; it never writes receipts or contacts a payment wallet. Existing donation-only history replays ordinary encounters.
+
+The authenticated Event archive switch persists separately from the wallet network. It closes **new** checkout requests. Existing request status and Bark reconciliation remain active, including late payments. Restarting replay captures the new history cutoff.
+
+## Pending Bitcoin and Express
+
+Bark's actual transaction outputs are tracked by `txid:vout`; they remain separate from the confirmed prize pool. Competing input spends can establish replacement. Missing provider data does not establish a dropped transaction. Rehearsal controls explicitly exercise replacement/drop behavior. A transaction merely absent from providers remains pending conservatively.
+
+Express uses Mempool's public estimate/invoice/status endpoints, chooses the lowest option and includes base and vsize service fees. A fresh quote and the decoded Lightning invoice must agree exactly. Only one active invoice per transaction is issued by this app; confirmation remains Bark's responsibility. Donors pay acceleration separately. Fees never enter the ledger and the app cannot spend organizer funds.
+
+`MEMPOOL_ACCELERATION_ENABLED=true` enables live Express **only on mainnet**. Leave it unset until the current API contract checks and a user-paid test pass. Contract fixtures are covered by tests; a real paid acceleration has not yet been verified. Failed/unavailable Express leaves the transaction and explorer link visible.
+
+`/rehearsal/admin` offers pending detection, quote/invoice, acceptance/failure, confirmation, replacement and drop. Movie mode derives gifts from every remaining midpoint and milestone, includes Lightning/Ark/ordinary Bitcoin/Express, and reaches the goal exactly at the chosen schedule duration. The cinematic queue finishes afterward. The rehearsal replay link plays the journal from that run. Demo acceleration invoices must not be paid; simulated acceptance is an operator action.
+
+Additive SQLite tables store observations, quotes and acceleration attempts. The event journal records state changes once and confirmed receipts atomically. Back up the complete database with SQLite's backup API and the private Bark wallet separately before upgrades.

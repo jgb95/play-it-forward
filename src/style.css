@@ -1568,3 +1568,163 @@ input::placeholder {
 .presentation .celebration {
   bottom: 38px;
 }
+
+/* Story, playback and payment status stay outside the walking corridor. */
+.departures {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  font-size: 0.72rem;
+  padding: 0.65rem;
+  background: #101b26ee;
+  border: 1px solid #42616d;
+  border-radius: 8px;
+  margin: 0.65rem 0;
+}
+.departures img,
+.express-checkout img {
+  width: 110px;
+  object-fit: contain;
+  align-self: center;
+}
+.departures div {
+  display: grid;
+  gap: 0.15rem;
+}
+.departures small {
+  width: 100%;
+  opacity: 0.7;
+}
+.playback-label,
+.story-caption {
+  color: #ffd58b !important;
+  background: #111b25db;
+  padding: 0.35rem 0.6rem;
+  border-radius: 5px;
+  width: fit-content;
+}
+.playback-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  padding: 0.5rem 1rem;
+  font-size: 0.8rem;
+}
+.playback-controls button,
+.pending-control button,
+.express-checkout button {
+  background: var(--surface, #17262b);
+  color: var(--text, #fff);
+  border: 1px solid #527078;
+  border-radius: 6px;
+  padding: 0.4rem 0.65rem;
+  cursor: pointer;
+}
+.playback-controls select {
+  background: #17262b;
+  color: white;
+  padding: 0.3rem;
+}
+.pending-control {
+  padding: 0.7rem;
+  border: 1px solid #527078;
+  margin: 0.5rem 0;
+}
+.pending-control button {
+  margin: 0.2rem;
+}
+.express-checkout {
+  border: 1px solid #527078;
+  padding: 1rem;
+  margin: 1rem 0;
+  border-radius: 10px;
+}
+.express-checkout img {
+  display: block;
+}
+.express-checkout a {
+  overflow-wrap: anywhere;
+}
+.presentation .departures {
+  font-size: 0.65rem;
+  max-width: 320px;
+}
+.presentation .departures img {
+  width: 85px;
+}
+.presentation .playback-controls {
+  position: fixed;
+  bottom: 135px;
+  left: 20px;
+  z-index: 5;
+  background: #101b26dc;
+  border-radius: 8px;
+  max-width: 65vw;
+}
+.presentation.controls-hidden .playback-controls {
+  opacity: 0;
+  pointer-events: none;
+}
+.presentation .scene-title .story-caption {
+  max-width: 55vw;
+}
+@media (max-width: 650px) {
+  .departures {
+    font-size: 0.7rem;
+  }
+  .playback-controls {
+    font-size: 0.7rem;
+  }
+  .presentation .playback-controls {
+    bottom: 160px;
+  }
+}
+
+.presentation .departures {
+  position: fixed;
+  top: 76px;
+  left: calc(50% - 145px);
+  width: 290px;
+  margin: 0;
+  z-index: 3;
+  max-width: 25vw;
+}
+.presentation .departures div {
+  font-size: 0.65rem;
+}
+.presentation .departures small {
+  font-size: 0.6rem;
+}
+@media (max-width: 900px) {
+  .presentation .departures {
+    top: 185px;
+    left: 20px;
+    max-width: 220px;
+  }
+}
+
+.pending-particles {
+  color: #ffbf7e;
+  display: flex;
+  gap: 0.3rem;
+  height: 0.75rem;
+}
+.pending-particles i {
+  font-style: normal;
+  animation: pending-glow 2.8s ease-in-out infinite alternate;
+}
+.pending-particles.express {
+  color: #af94ff;
+}
+@keyframes pending-glow {
+  to {
+    opacity: 0.4;
+    transform: translateY(-2px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pending-particles i {
+    animation: none;
+  }
+}

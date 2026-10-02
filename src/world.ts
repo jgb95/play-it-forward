@@ -1,3 +1,5 @@
+import { actor, crewActors, supporter } from "./actors";
+import type { Recruit } from "../shared/model";
 import type { State } from "../shared/model";
 const W = 640,
   H = 300;
@@ -270,56 +272,73 @@ export function background(scene: number, vaultOpen: boolean, tier: number) {
     lamp(c, 153, 240);
     lamp(c, 491, 240);
   } else {
-    box(c, 0, 0, 640, 300, "#162e2c");
-    for (let i = 0; i < 320; i++)
-      box(
-        c,
-        rand() * 640,
-        rand() * 220,
-        15 + rand() * 28,
-        7 + rand() * 16,
-        i % 3 === 0 ? "#33473b" : "#223b33",
-      );
-    box(c, 0, 222, 640, 78, "#344435");
-    c.save();
-    c.translate(170, 0);
-    box(c, 204, 62, 230, 166, "#56624a");
-    box(c, 211, 55, 216, 179, "#73806a");
-    box(c, 218, 61, 202, 165, "#233c35");
-    c.fillStyle = "#a09b68";
-    c.beginPath();
-    c.arc(319, 150, 72, 0, Math.PI * 2);
-    c.fill();
-    c.fillStyle = "#344c3d";
-    c.beginPath();
-    c.arc(319, 150, 65, 0, Math.PI * 2);
-    c.fill();
-    for (let i = 0; i < 12; i++) {
-      const a = (i * Math.PI) / 6;
-      box(c, 317 + Math.cos(a) * 68, 148 + Math.sin(a) * 68, 4, 4, "#d2bc7f");
+    box(c, 0, 0, 640, 300, "#1d3040");
+    building(c, 35, 85, 570, 145, "#39484a", false);
+    for (let row = 0; row < 13; row++)
+      for (let col = 0; col < 35; col++)
+        box(
+          c,
+          40 + col * 16 + (row % 2) * 8,
+          89 + row * 10,
+          13,
+          7,
+          row % 3 ? "#4c514d" : "#565247",
+        );
+    box(c, 47, 103, 548, 6, "#81968b");
+    box(c, 70, 120, 530, 104, "#173337");
+    for (let i = 0; i < 7; i++) {
+      box(c, 80 + i * 57, 127, 47, 74, vaultOpen ? "#b4a672" : "#315454");
+      box(c, 102 + i * 57, 127, 2, 74, "#1f4343");
+      box(c, 80 + i * 57, 153, 47, 2, "#2d4642");
     }
+    box(c, 182, 76, 283, 38, "#1c343b");
+    box(c, 185, 79, 277, 2, "#eaad6b");
+    c.fillStyle = "#ffe5b4";
+    c.font = "bold 15px monospace";
+    c.fillText("bitcoin++", 233, 96);
+    c.font = "8px monospace";
+    c.fillText("COMMUNITY BUILD NIGHT", 242, 108);
+    box(c, 454, 125, 102, 109, "#4e807c");
+    box(c, 461, 130, 88, 102, vaultOpen ? "#ffc885" : "#1d4449");
     if (vaultOpen) {
-      box(c, 251, 84, 135, 137, "#112521");
-      glow(c, 317, 170, 95, "#ffc77766");
-      for (let i = 0; i < 70 + tier * 20; i++) {
-        const x = 262 + rand() * 110,
-          y = 174 + rand() * 45;
-        box(c, x, y, 5, 3, ["#e8b761", "#ffda86", "#a08040"][i % 3]);
+      glow(c, 480, 175, 150, "#ffc87966");
+      box(c, 460, 139, 84, 8, "#fff0b8");
+      for (let i = 0; i < 6 + Math.min(tier, 12); i++) {
+        const x = 90 + (i % 9) * 48,
+          y = 178 + Math.floor(i / 9) * 29;
+        box(c, x, y, 36, 3, "#b98f68");
+        box(c, x + 3, y + 3, 2, 16, "#59473e");
+        box(c, x + 29, y + 3, 2, 16, "#59473e");
+        box(c, x + 6, y - 14, 22, 13, "#223946");
+        box(c, x + 8, y - 12, 18, 8, ["#80d8bb", "#df9ec6", "#edc272"][i % 3]);
+        box(c, x + 16, y - 1, 2, 2, "#d1cda5");
+        box(c, x + 20, y + 5, 5, 8, ["#79aca0", "#ac7fab", "#d79d76"][i % 3]);
+        box(c, x + 20, y + 1, 4, 4, "#d8af88");
       }
-      box(c, 280, 160, 65, 20, "#93623c");
-      box(c, 280, 155, 65, 7, "#ffc675");
-      box(c, 309, 166, 8, 9, "#ffd78b");
+      c.fillStyle = "#274944";
+      c.font = "bold 8px monospace";
+      c.fillText("COME IN. BUILD TOGETHER.", 466, 154);
     } else {
-      box(c, 289, 144, 60, 6, "#8e986d");
-      box(c, 315, 121, 6, 51, "#8e986d");
-      box(c, 309, 143, 19, 10, "#d1b781");
+      box(c, 504, 131, 2, 99, "#79a799");
+      box(c, 492, 179, 3, 5, "#ffe0a0");
+      box(c, 513, 179, 3, 5, "#ffe0a0");
+      c.fillStyle = "#ffe0ac";
+      c.font = "7px monospace";
+      c.fillText("GET THE CREW", 469, 150);
+      c.fillText("TOGETHER", 475, 160);
     }
-    c.restore();
-    lamp(c, 175, 231);
-    lamp(c, 465, 231);
-    stall(c, 44, 276, "#3a6150");
-    box(c, 510, 238, 46, 22, "#815834");
-    box(c, 507, 235, 52, 5, "#b3874e");
+    box(c, 0, 235, 640, 65, "#64515b");
+    box(c, 0, 234, 640, 2, "#c2a276");
+    lamp(c, 57, 233);
+    lamp(c, 594, 233);
+    for (let i = 0; i < 14; i++) {
+      const x = 50 + i * 41,
+        y = 61 + Math.sin(i * 0.4) * 9;
+      box(c, x, y, 2, 2, "#ffe4aa");
+      glow(c, x, y, 14, "#ffb75128");
+    }
+    for (let i = 0; i < 70; i++)
+      box(c, rand() * 640, 242 + rand() * 57, 6, 1, "#c6a38222");
   }
   // Market life, warm strings of light, and foreground color give each stop a home.
   if (scene !== 5) {
@@ -378,7 +397,7 @@ function courier(
   box(c, 0, -2 + Math.max(0, -step), 7, 3, "#c9bfa8");
   // Feet stay planted while the torso breathes and gently vibes.
   c.translate(
-    walking ? 0 : Math.sin(t * 1.8) * 0.35,
+    walking ? 0 : Math.sin(t * 1.8) * 0.1,
     walking
       ? 0
       : Math.sin(t * 2.2) * 0.45 + (celebrate ? Math.sin(t * 5) * 0.6 : 0),
@@ -427,6 +446,7 @@ export type Trail = {
   amount: number;
   milestone: boolean;
   duration: number;
+  visitor?: boolean;
 };
 function environment(
   c: CanvasRenderingContext2D,
@@ -489,7 +509,11 @@ export function render(
   reduced: boolean,
   pose: {
     x: number;
+    pickup?: boolean;
     walking: boolean;
+    crew?: Recruit[];
+    waiting?: Recruit;
+    joins?: Map<string, number>;
     slide: number;
     incoming?: { bg: HTMLCanvasElement; state: State };
   },
@@ -505,6 +529,42 @@ export function render(
   c.restore();
   const x = pose.x,
     y = 254;
+  if (pose.waiting)
+    actor(
+      c,
+      state.chapter === 5 ? 315 : 355,
+      235,
+      reduced ? 0 : time,
+      pose.waiting.sprite,
+      false,
+      true,
+      1.35,
+    );
+  crewActors(
+    c,
+    x,
+    y,
+    reduced ? 0 : time,
+    pose.crew ?? [],
+    pose.walking && !reduced,
+    pose.joins ?? new Map(),
+    reduced,
+  );
+  const visitor = trails.findLast(
+    (trail) => trail.visitor && time - trail.born < trail.duration,
+  );
+  const donor = visitor
+    ? supporter(
+        c,
+        x,
+        y,
+        time,
+        visitor.index,
+        time - visitor.born,
+        reduced,
+        visitor.duration,
+      )
+    : undefined;
   courier(
     c,
     x,
@@ -514,6 +574,21 @@ export function render(
     trails.length > 0,
     pose.walking && !reduced,
   );
+  if (pose.pickup) {
+    glow(c, x + 12, y - 46, 35, "#ffcf7788");
+    box(c, x + 12, y - 54, 12, 10, "#fca95b");
+    box(c, x + 17, y - 54, 2, 10, "#fff0ba");
+    box(c, x + 12, y - 50, 12, 2, "#fff0ba");
+    for (let i = 0; i < 5; i++)
+      box(
+        c,
+        x + 18 + Math.sin(time * 4 + i) * 24,
+        y - 54 + Math.cos(time * 3 + i) * 18,
+        2,
+        2,
+        "#fff0ba",
+      );
+  }
   if (reduced && trails.length) glow(c, x - 8, y - 27, 34, "#ffb95755");
   for (const trail of reduced ? [] : trails) {
     const age = time - trail.born,
@@ -531,10 +606,13 @@ export function render(
       [35, 210],
       [610, 205],
     ];
-    const [sx, sy] = origins[trail.index % origins.length];
+    const [sx, sy] =
+      trail.visitor && donor
+        ? [donor.x, donor.y]
+        : origins[trail.index % origins.length];
     const strength = Math.min(
       2.4,
-      1 + Math.log10(Math.max(1, trail.amount) / 1000 + 1) * 0.35,
+      1 + Math.log10(Math.max(1, trail.amount) + 1) * 0.1,
     );
     if (p < 1) {
       for (let j = 0; j < 24; j++) {
