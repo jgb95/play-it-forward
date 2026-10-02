@@ -1465,9 +1465,9 @@ function Donate() {
                 <p className="payment-note">
                   {data.state.mode === "demo"
                     ? "This is a simulated contribution. No wallet or real sats needed."
-                    : method === "bitcoin"
+                    : c.method === "bitcoin"
                       ? "Your payment joins the pool after one confirmation."
-                      : method === "ark"
+                      : c.method === "ark"
                         ? "Send to this Ark address using a compatible Bark wallet."
                         : "Scan with your Lightning wallet, or open it below."}
                 </p>
@@ -1683,7 +1683,11 @@ function Admin() {
     setBusy(true);
     setMessage("");
     try {
-      await api("/admin/" + path, body);
+      const result = await api<any>("/admin/" + path, body);
+      if (path === "onchain" && typeof result.totalSats === "number")
+        setMessage(
+          `Rehearsal Express ${result.status ?? "quote"}: ${sats(result.totalSats)} sats, paid separately from the donation. ${result.invoiceId ? "Use Accept or Fail to simulate the result." : ""}`,
+        );
       await refresh();
     } catch (e) {
       setMessage((e as Error).message);

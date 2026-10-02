@@ -125,3 +125,10 @@ Express uses Mempool's public estimate/invoice/status endpoints, chooses the low
 `/rehearsal/admin` offers pending detection, quote/invoice, acceptance/failure, confirmation, replacement and drop. Movie mode derives gifts from every remaining midpoint and milestone, includes Lightning/Ark/ordinary Bitcoin/Express, and reaches the goal exactly at the chosen schedule duration. The cinematic queue finishes afterward. The rehearsal replay link plays the journal from that run. Demo acceleration invoices must not be paid; simulated acceptance is an operator action.
 
 Additive SQLite tables store observations, quotes and acceleration attempts. The event journal records state changes once and confirmed receipts atomically. Back up the complete database with SQLite's backup API and the private Bark wallet separately before upgrades.
+
+
+### October 2 story release verification
+
+The regression suite has 40 passing tests, including 100-receipt bursts, odd chapter midpoint calculations, pending output identity/replacement outages, complete Express pricing, invoice amount mismatches, concurrent invoice requests, confirmation during invoice creation, archive checkout, late receipts and fixed replay cutoffs. A 30-second rehearsal schedule reached the configured goal exactly and recorded 12 donations, 15 pending state changes and three complete Express flows. Browser playback acknowledged all 12 donations, completed with all six companions, and the recap also acknowledged all 12 before joining live.
+
+The deployed live ledger remained at 10,000 sats / two receipts following restart and reconciliation. Live Express is disabled. A funded Express test and physical phone QR scan remain outstanding. The 720p venue layout was inspected; the in-app browser ignored requested 1080p/mobile viewport overrides, so those sizes need a separate browser/physical device check.
