@@ -48,7 +48,7 @@ export class ContributionFeed {
     const status =
       event.kind === "donation" || old?.status === "confirmed"
         ? "confirmed"
-        : ["confirmed", "replaced", "dropped"].includes(p.status)
+        : ["replaced", "dropped"].includes(p.status)
           ? p.status
           : "pending";
     this.entries.set(key, {

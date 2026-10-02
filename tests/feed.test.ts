@@ -37,6 +37,12 @@ test("pending output updates in place, fees stay separate, duplicates and extra 
       totalSats: 999,
     }),
   );
+  f.apply(event(3, "onchain", { ...pending, status: "confirmed" }));
+  assert.equal(
+    f.rows()[0].status,
+    "pending",
+    "only a credited receipt marks the feed confirmed",
+  );
   f.apply(
     event(4, "donation", {
       receiptKey: pending.key,
