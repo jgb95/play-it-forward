@@ -486,13 +486,10 @@ export function createApp(
   app.post("/api/admin/withdrawals/preview", async (req, res) => {
     try {
       if (!withdrawals) throw Error("Simulation cannot withdraw real funds");
-      if (!["ark", "bitcoin"].includes(req.body.kind))
-        throw Error("Choose Ark or Bitcoin balance");
+      if (req.body.kind !== undefined && req.body.kind !== "all")
+        throw Error("Withdrawals always use the whole wallet");
       res.json(
-        await withdrawals.preview(
-          req.body.kind,
-          String(req.body.destination ?? ""),
-        ),
+        await withdrawals.preview("all", String(req.body.destination ?? "")),
       );
     } catch (e) {
       res.status(400).json({ error: (e as Error).message });

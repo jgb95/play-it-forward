@@ -1685,7 +1685,6 @@ function RunAndWalletControls({
 }) {
   const [name, setName] = useState("Berlin adventure"),
     [destination, setDestination] = useState(""),
-    [kind, setKind] = useState("ark"),
     [wallet, setWallet] = useState<any>(null),
     [review, setReview] = useState<any>(null),
     [message, setMessage] = useState(""),
@@ -1704,7 +1703,11 @@ function RunAndWalletControls({
     }
   }
   return (
-    <div className="admin-grid">
+    <div
+      className={
+        "admin-grid" + (health.withdrawalsEnabled ? "" : " admin-grid-single")
+      }
+    >
       <section className="admin-card">
         <p className="eyebrow">SAVED GAME RUNS</p>
         <h2>Every adventure has a history</h2>
@@ -1762,17 +1765,15 @@ function RunAndWalletControls({
           </div>
         ))}
       </section>
-      <section className="admin-card">
-        <p className="eyebrow">ORGANIZER WALLET</p>
-        <h2>Withdraw funds</h2>
-        {!health.withdrawalsEnabled ? (
-          <p>Rehearsal has no access to real wallet funds.</p>
-        ) : (
+      {health.withdrawalsEnabled && (
+        <section className="admin-card">
+          <p className="eyebrow">ORGANIZER WALLET</p>
+          <h2>Withdraw entire wallet</h2>
           <>
             <p>
-              These balances include all game runs. Withdrawals do not change
-              their recorded amounts raised. Close contributions with Event
-              archive before sending.
+              Send all available funds to one Bitcoin address. The recorded pool
+              and saved runs stay intact. Close contributions before
+              withdrawing.
             </p>
             <button
               className="secondary"
@@ -1789,19 +1790,6 @@ function RunAndWalletControls({
                 {sats(wallet.bitcoin.confirmed_sat)} confirmed sats
               </p>
             )}
-            <label htmlFor="withdraw-kind">Balance to withdraw</label>
-            <select
-              id="withdraw-kind"
-              value={kind}
-              onChange={(e) => {
-                setKind(e.target.value);
-                setReview(null);
-                setConfirm("");
-              }}
-            >
-              <option value="ark">Entire Ark balance → Bitcoin</option>
-              <option value="bitcoin">Entire on-chain Bitcoin balance</option>
-            </select>
             <label htmlFor="withdraw-address">
               Your receiving Bitcoin address (bc1p…)
             </label>
@@ -1824,7 +1812,6 @@ function RunAndWalletControls({
               onClick={() =>
                 void action(async () => {
                   const quote = await api<any>("/admin/withdrawals/preview", {
-                    kind,
                     destination,
                   });
                   setReview({ ...quote, clientExpires: Date.now() + 60000 });
@@ -1832,7 +1819,7 @@ function RunAndWalletControls({
                 })
               }
             >
-              Review withdrawal
+              Review entire withdrawal
             </button>
             {review && (
               <div className="withdraw-review">
@@ -1842,6 +1829,9 @@ function RunAndWalletControls({
                   {sats(review.gross)} sats balance · {sats(review.fee)} sats{" "}
                   {review.feeEstimated ? "estimated fee" : "quoted fee"} ·
                   approximately {sats(review.net)} sats received.
+                  {review.parts?.length > 1
+                    ? " Two transactions, one receiving address."
+                    : ""}
                 </p>
                 <p>
                   Review expires after 60 seconds. Bark uses current fees when
@@ -1873,47 +1863,58 @@ function RunAndWalletControls({
                       });
                       setReview(null);
                       setConfirm("");
-                      setMessage("Withdrawal broadcast: " + r.txid);
+                      setMessage(
+                        r.status === "broadcast"
+                          ? "Entire wallet withdrawal broadcast. Transaction links are below."
+                          : (r.error ?? "Review the withdrawal result below."),
+                      );
                       setWallet(await api("/admin/wallet"));
                     })
                   }
                 >
-                  Send funds
+                  Withdraw entire wallet
                 </button>
               </div>
             )}
             {health.withdrawals?.map((w: any) => (
               <div key={w.id} className="run-row">
                 <b>
-                  {w.kind} withdrawal · {w.status}
+                  {w.kind === "all" ? "Whole wallet" : w.kind} withdrawal ·{" "}
+                  {w.status}
                 </b>
                 <p>
                   {sats(w.gross)} sats · {new Date(w.created).toLocaleString()}
                 </p>
-                {w.txid && (
-                  <a
-                    href={
-                      (health.mode === "mainnet"
-                        ? "https://mempool.space/tx/"
-                        : "https://mempool.space/signet/tx/") + w.txid
-                    }
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    View transaction ↗
-                  </a>
-                )}
+                {(w.parts ?? (w.txid ? [{ kind: w.kind, txid: w.txid }] : []))
+                  .filter((part: any) => part.txid)
+                  .map((part: any) => (
+                    <a
+                      key={part.txid}
+                      href={
+                        (health.mode === "mainnet"
+                          ? "https://mempool.space/tx/"
+                          : "https://mempool.space/signet/tx/") + part.txid
+                      }
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      {part.kind === "ark"
+                        ? "Ark withdrawal"
+                        : "Bitcoin withdrawal"}{" "}
+                      transaction ↗
+                    </a>
+                  ))}
                 {w.error && <p role="alert">{w.error}</p>}
               </div>
             ))}
           </>
-        )}
-        {message && (
-          <p role="status" className="message">
-            {message}
-          </p>
-        )}
-      </section>
+        </section>
+      )}
+      {message && (
+        <p role="status" className="message">
+          {message}
+        </p>
+      )}
     </div>
   );
 }
@@ -2009,10 +2010,9 @@ function Admin() {
         </form>
       ) : (
         <>
-          <RunAndWalletControls health={health} refresh={refresh} />
           <div className="admin-grid">
             <section className="admin-card">
-              <p className="eyebrow">JOURNEY HEALTH</p>
+              <p className="eyebrow">EVENT STATUS</p>
               <h2>
                 {health?.mode === "demo"
                   ? "Simulation mode"
@@ -2022,7 +2022,12 @@ function Admin() {
                 {sats(data?.state.total ?? 0)} sats · {data?.state.count ?? 0}{" "}
                 receipts
               </p>
-              <p>{health?.screenConnections} connected pages</p>
+              <p>
+                {health?.screenConnections} connected pages ·{" "}
+                {data?.state.eventMode === "archive"
+                  ? "Contributions closed"
+                  : "Contributions open"}
+              </p>
               <button
                 className="secondary"
                 disabled={busy}
@@ -2034,11 +2039,15 @@ function Admin() {
                 }
               >
                 {data?.state.eventMode === "archive"
-                  ? "Reopen live contributions"
-                  : "Switch to event archive"}
+                  ? "Open contributions"
+                  : "Close contributions & show replay"}
               </button>
-              <a href={BASE + "/screen?live=1"}>Present directly live ↗</a>
-              <a href={BASE + "/screen?replay=1"}>Preview recorded replay ↗</a>
+              <a className="primary" href={BASE + "/screen?live=1"}>
+                Present adventure ↗
+              </a>
+              <a className="secondary" href={BASE + "/screen?replay=1"}>
+                Preview recorded replay ↗
+              </a>
               <p>
                 Last reconciliation:{" "}
                 {health?.lastSync
@@ -2058,135 +2067,6 @@ function Admin() {
                 Reconcile now
               </button>
             </section>
-            <section className="admin-card">
-              <p className="eyebrow">DEMO CONTROLS</p>
-              <button
-                className="secondary"
-                disabled={busy || health?.mode !== "demo"}
-                onClick={() =>
-                  act("onchain", { action: "detect", amount, name })
-                }
-              >
-                Detect pending Bitcoin
-              </button>
-              {data?.state.onchain?.map((o) => (
-                <div className="pending-control" key={o.key}>
-                  <b>
-                    {sats(o.amount)} sats · {o.status} {o.acceleration ?? ""}
-                  </b>
-                  {o.status === "pending" &&
-                    [
-                      "quote",
-                      "invoice",
-                      "accept",
-                      "fail",
-                      "confirm",
-                      "replace",
-                      "drop",
-                    ].map((action) => (
-                      <button
-                        key={action}
-                        disabled={busy || health?.mode !== "demo"}
-                        onClick={() => act("onchain", { action, key: o.key })}
-                      >
-                        {action}
-                      </button>
-                    ))}
-                </div>
-              ))}
-              <label htmlFor="sim-amount">Donation amount in sats</label>
-              <input
-                id="sim-amount"
-                type="number"
-                min="1"
-                value={amount}
-                onChange={(e) => setAmount(Number(e.target.value))}
-              />
-              <label htmlFor="sim-name">Contributor name</label>
-              <input
-                id="sim-name"
-                maxLength={32}
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-              />
-              <label htmlFor="burst-count">Donations in a burst (1–100)</label>
-              <input
-                id="burst-count"
-                type="number"
-                min="1"
-                max="100"
-                value={burstCount}
-                onChange={(e) => setBurstCount(Number(e.target.value))}
-              />
-              <div className="preset-row">
-                {(data ? giftPresets(data.config) : []).map((n) => (
-                  <button
-                    className="secondary"
-                    key={n}
-                    onClick={() => setAmount(n)}
-                  >
-                    {sats(n)} sats
-                  </button>
-                ))}
-              </div>
-              <button
-                className="secondary"
-                disabled={
-                  busy ||
-                  health?.mode !== "demo" ||
-                  !data ||
-                  data.state.vaultOpen
-                }
-                onClick={() =>
-                  act("simulate", {
-                    amount: data!.state.remaining,
-                    name: "Next chapter",
-                  })
-                }
-              >
-                Reach next milestone ↗
-              </button>
-              <button
-                className="primary"
-                disabled={busy || health?.mode !== "demo"}
-                onClick={() => act("simulate", { amount, name })}
-              >
-                Send donation ↗
-              </button>
-              <button
-                className="secondary"
-                disabled={busy || health?.mode !== "demo"}
-                onClick={() =>
-                  act("simulate", { amount, name, count: burstCount })
-                }
-              >
-                Send burst · {burstCount} donations
-              </button>
-              <button
-                className="secondary"
-                disabled={busy || health?.mode !== "demo"}
-                onClick={() =>
-                  act("simulate", {
-                    amount: 2100000,
-                    name: "The Berlin community",
-                  })
-                }
-              >
-                Travel to the hackathon hall
-              </button>
-              <button
-                className="danger"
-                disabled={busy || health?.mode !== "demo"}
-                onClick={() => {
-                  if (confirm("Reset this simulated adventure to zero?"))
-                    void act("reset", {});
-                }}
-              >
-                Save & restart demo adventure
-              </button>
-            </section>
-          </div>
-          <div className="admin-grid">
             <section className="admin-card">
               <p className="eyebrow">THE DIRECTOR’S CHAIR</p>
               <h2>Give every gift a moment.</h2>
@@ -2248,99 +2128,215 @@ function Admin() {
                 Skip queued celebrations · catch up now
               </button>
             </section>
-            <section className="admin-card">
-              <p className="eyebrow">MOVIE MODE · SIMULATED SATS ONLY</p>
-              <h2>A whole adventure, on a timer.</h2>
-              <label htmlFor="movie-duration">
-                Movie duration in seconds (30–1800)
-              </label>
-              <input
-                id="movie-duration"
-                type="number"
-                min="30"
-                max="1800"
-                value={movieDuration}
-                onChange={(e) => setMovieDuration(Number(e.target.value))}
-              />
-              <p>
-                Gifts are paced through each remaining chapter, reaching the
-                goal at the scheduled time. The final celebration may finish a
-                few seconds later. Pause stops new movie gifts; queued
-                celebrations continue.
-              </p>
-              <p>
-                {health?.movie?.running
-                  ? `${health.movie.paused ? "Paused" : "Playing"} · ${Math.ceil(health.movie.remaining)} seconds left · ${health.movie.gifts}/${health.movie.planned} gifts`
-                  : "Ready for the next screening."}
-              </p>
-              <button
-                className="primary"
-                disabled={
-                  busy || health?.mode !== "demo" || health?.movie?.running
-                }
-                onClick={() =>
-                  act("movie", { action: "start", duration: movieDuration })
-                }
-              >
-                Start movie ↗
-              </button>
-              <div className="preset-row">
+          </div>
+          <RunAndWalletControls health={health} refresh={refresh} />
+          {health?.mode === "demo" && (
+            <div className="admin-grid">
+              <section className="admin-card">
+                <p className="eyebrow">DEMO CONTROLS</p>
                 <button
                   className="secondary"
-                  disabled={busy || !health?.movie?.running}
+                  disabled={busy || health?.mode !== "demo"}
                   onClick={() =>
-                    act("movie", {
-                      action: health?.movie?.paused ? "resume" : "pause",
+                    act("onchain", { action: "detect", amount, name })
+                  }
+                >
+                  Detect pending Bitcoin
+                </button>
+                {data?.state.onchain?.map((o) => (
+                  <div className="pending-control" key={o.key}>
+                    <b>
+                      {sats(o.amount)} sats · {o.status} {o.acceleration ?? ""}
+                    </b>
+                    {o.status === "pending" &&
+                      [
+                        "quote",
+                        "invoice",
+                        "accept",
+                        "fail",
+                        "confirm",
+                        "replace",
+                        "drop",
+                      ].map((action) => (
+                        <button
+                          key={action}
+                          disabled={busy || health?.mode !== "demo"}
+                          onClick={() => act("onchain", { action, key: o.key })}
+                        >
+                          {action}
+                        </button>
+                      ))}
+                  </div>
+                ))}
+                <label htmlFor="sim-amount">Donation amount in sats</label>
+                <input
+                  id="sim-amount"
+                  type="number"
+                  min="1"
+                  value={amount}
+                  onChange={(e) => setAmount(Number(e.target.value))}
+                />
+                <label htmlFor="sim-name">Contributor name</label>
+                <input
+                  id="sim-name"
+                  maxLength={32}
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                />
+                <label htmlFor="burst-count">
+                  Donations in a burst (1–100)
+                </label>
+                <input
+                  id="burst-count"
+                  type="number"
+                  min="1"
+                  max="100"
+                  value={burstCount}
+                  onChange={(e) => setBurstCount(Number(e.target.value))}
+                />
+                <div className="preset-row">
+                  {(data ? giftPresets(data.config) : []).map((n) => (
+                    <button
+                      className="secondary"
+                      key={n}
+                      onClick={() => setAmount(n)}
+                    >
+                      {sats(n)} sats
+                    </button>
+                  ))}
+                </div>
+                <button
+                  className="secondary"
+                  disabled={
+                    busy ||
+                    health?.mode !== "demo" ||
+                    !data ||
+                    data.state.vaultOpen
+                  }
+                  onClick={() =>
+                    act("simulate", {
+                      amount: data!.state.remaining,
+                      name: "Next chapter",
                     })
                   }
                 >
-                  {health?.movie?.paused ? "Resume movie" : "Pause movie"}
+                  Reach next milestone ↗
+                </button>
+                <button
+                  className="primary"
+                  disabled={busy || health?.mode !== "demo"}
+                  onClick={() => act("simulate", { amount, name })}
+                >
+                  Send donation ↗
                 </button>
                 <button
                   className="secondary"
-                  disabled={busy || !health?.movie?.running}
-                  onClick={() => act("movie", { action: "stop" })}
+                  disabled={busy || health?.mode !== "demo"}
+                  onClick={() =>
+                    act("simulate", { amount, name, count: burstCount })
+                  }
                 >
-                  Stop movie
+                  Send burst · {burstCount} donations
                 </button>
-              </div>
-            </section>
-          </div>
-          <section className="admin-card mode-card">
-            <p className="eyebrow">EVENT AND REHEARSAL</p>
-            <h2>
-              {BASE
-                ? "Rehearsal · its own demo ledger"
-                : health?.mode === "mainnet"
-                  ? "Mainnet event"
-                  : "Event is in " + (health?.mode ?? "demo") + " mode"}
-            </h2>
-            <p>
-              {BASE
-                ? "These simulated receipts never enter the event prize pool or wallet."
-                : "Use rehearsal for movie demos and practice. The event’s network is configured at server startup so switching views cannot swap wallets or mix funds."}
-            </p>
-            <a className="primary" href={BASE ? "/admin" : "/rehearsal/admin"}>
-              {BASE
-                ? "Return to event operator desk ↗"
-                : "Open isolated rehearsal ↗"}
-            </a>
+                <button
+                  className="secondary"
+                  disabled={busy || health?.mode !== "demo"}
+                  onClick={() =>
+                    act("simulate", {
+                      amount: Math.max(
+                        1,
+                        (data?.config.goal ?? 1) - (data?.state.total ?? 0),
+                      ),
+                      name: "The Berlin community",
+                    })
+                  }
+                >
+                  Travel to the hackathon hall
+                </button>
+                <button
+                  className="danger"
+                  disabled={busy || health?.mode !== "demo"}
+                  onClick={() => {
+                    if (confirm("Reset this simulated adventure to zero?"))
+                      void act("reset", {});
+                  }}
+                >
+                  Save & restart demo adventure
+                </button>
+              </section>
+              <section className="admin-card">
+                <p className="eyebrow">MOVIE MODE · SIMULATED SATS ONLY</p>
+                <h2>A whole adventure, on a timer.</h2>
+                <label htmlFor="movie-duration">
+                  Movie duration in seconds (30–1800)
+                </label>
+                <input
+                  id="movie-duration"
+                  type="number"
+                  min="30"
+                  max="1800"
+                  value={movieDuration}
+                  onChange={(e) => setMovieDuration(Number(e.target.value))}
+                />
+                <p>
+                  Gifts are paced through each remaining chapter, reaching the
+                  goal at the scheduled time. The final celebration may finish a
+                  few seconds later. Pause stops new movie gifts; queued
+                  celebrations continue.
+                </p>
+                <p>
+                  {health?.movie?.running
+                    ? `${health.movie.paused ? "Paused" : "Playing"} · ${Math.ceil(health.movie.remaining)} seconds left · ${health.movie.gifts}/${health.movie.planned} gifts`
+                    : "Ready for the next screening."}
+                </p>
+                <button
+                  className="primary"
+                  disabled={
+                    busy || health?.mode !== "demo" || health?.movie?.running
+                  }
+                  onClick={() =>
+                    act("movie", { action: "start", duration: movieDuration })
+                  }
+                >
+                  Start movie ↗
+                </button>
+                <div className="preset-row">
+                  <button
+                    className="secondary"
+                    disabled={busy || !health?.movie?.running}
+                    onClick={() =>
+                      act("movie", {
+                        action: health?.movie?.paused ? "resume" : "pause",
+                      })
+                    }
+                  >
+                    {health?.movie?.paused ? "Resume movie" : "Pause movie"}
+                  </button>
+                  <button
+                    className="secondary"
+                    disabled={busy || !health?.movie?.running}
+                    onClick={() => act("movie", { action: "stop" })}
+                  >
+                    Stop movie
+                  </button>
+                </div>
+              </section>
+            </div>
+          )}
+
+          <nav className="operator-links" aria-label="Operator workspaces">
             <a
               className="secondary"
-              href={BASE + "/screen"}
-              target="_blank"
-              rel="noreferrer"
+              href={BASE ? "/admin" : "/rehearsal/admin"}
             >
-              Open this venue screen ↗
+              {BASE ? "Return to live Admin ↗" : "Open isolated rehearsal ↗"}
             </a>
-            {!BASE && (
-              <p>
-                {health?.liveReady
-                  ? "Mainnet wallet reconciliation is healthy."
-                  : "Mainnet setup: install Barkd 0.7.1, create and back up a mainnet wallet, set BARK_TOKEN and PAYMENT_MODE=mainnet, configure HTTPS, then enable LIVE_PAYMENTS_ENABLED and restart. Run a small settlement test before sharing the QR."}
-              </p>
-            )}
-          </section>
+            <span>
+              {BASE
+                ? "Simulation only · separate from real funds"
+                : "Practice donations and movie mode in rehearsal"}
+            </span>
+          </nav>
           <button
             className="secondary"
             onClick={async () => {

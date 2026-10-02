@@ -1744,3 +1744,28 @@ input::placeholder {
   display: block;
   margin-bottom: 0.7rem;
 }
+
+.operator-links {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  flex-wrap: wrap;
+  margin: 1.5rem 0;
+  color: var(--muted);
+}
+.admin-card > a {
+  display: inline-block;
+  margin: 0.5rem 0.5rem 0.5rem 0;
+}
+.admin-card .withdraw-review {
+  background: var(--surface-soft);
+  padding: 1rem;
+  border-radius: 0.5rem;
+}
+
+.admin-grid-single {
+  grid-template-columns: 1fr;
+}
+.admin-grid > .message {
+  grid-column: 1 / -1;
+}

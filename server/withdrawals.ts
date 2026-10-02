@@ -29,7 +29,7 @@ export class Withdrawals {
       bitcoin: await this.bark.api<any>("/onchain/balance"),
     };
   }
-  async estimate(kind: "ark" | "bitcoin", destination: string) {
+  async estimate(kind: "ark" | "bitcoin" | "all", destination: string) {
     const decoded = address.fromBech32(destination);
     const prefix = this.bark.network === "mainnet" ? "bc" : "tb";
     if (
@@ -39,6 +39,36 @@ export class Withdrawals {
     )
       throw Error("Use a Taproot Bitcoin address on this wallet’s network");
     const balance = await this.balances();
+    if (kind === "all") {
+      if (
+        Object.entries(balance.ark).some(
+          ([key, value]) =>
+            key !== "spendable_sat" && typeof value === "number" && value > 0,
+        )
+      )
+        throw Error(
+          "Wait for pending wallet operations before withdrawing everything",
+        );
+      const parts: any[] = [];
+      for (const [part, amount] of [
+        ["bitcoin", balance.bitcoin.total_sat],
+        ["ark", balance.ark.spendable_sat],
+      ] as const) {
+        if (amount > 0)
+          parts.push({
+            kind: part,
+            ...(await this.estimate(part, destination)),
+          });
+      }
+      if (!parts.length) throw Error("The wallet is empty");
+      return {
+        gross: parts.reduce((n, p) => n + p.gross, 0),
+        fee: parts.reduce((n, p) => n + p.fee, 0),
+        net: parts.reduce((n, p) => n + p.net, 0),
+        fingerprint: JSON.stringify(parts),
+        parts,
+      };
+    }
     if (kind === "ark") {
       const q = await this.bark.api<any>(
         "/fees/offboard-all?address=" + encodeURIComponent(destination),
@@ -104,7 +134,7 @@ export class Withdrawals {
       .map((x) => JSON.parse(String(x.payload)))
       .some((p) => ["checking", "submitted", "unknown"].includes(p.status));
   }
-  async preview(kind: "ark" | "bitcoin", destination: string) {
+  async preview(kind: "ark" | "bitcoin" | "all", destination: string) {
     if (this.blocked())
       throw Error(
         "An earlier withdrawal needs wallet inspection before preparing another transfer",
@@ -121,7 +151,7 @@ export class Withdrawals {
       created: Date.now(),
       expires: Date.now() + 60000,
       status: "review",
-      feeEstimated: kind === "bitcoin",
+      feeEstimated: kind !== "ark",
     };
     this.save(p);
     return p;
@@ -164,25 +194,58 @@ export class Withdrawals {
     // Persist before making the money-moving call. A timeout or process crash requires manual inspection, never automatic retry.
     p.status = "submitted";
     this.save(p);
-    try {
-      const result = await this.bark.api<any>(
-        p.kind === "ark" ? "/wallet/offboard/all" : "/onchain/drain",
-        p.kind === "ark"
-          ? { address: p.destination }
-          : { destination: p.destination },
-      );
-      p.txid = result.offboard_txid ?? result.txid;
-      if (!/^[0-9a-f]{64}$/.test(p.txid))
-        throw Error("Unexpected withdrawal response");
-      p.status = "broadcast";
+    const parts = p.parts ?? [
+      {
+        kind: p.kind,
+        gross: p.gross,
+        fee: p.fee,
+        net: p.net,
+        fingerprint: p.fingerprint,
+      },
+    ];
+    p.parts = parts;
+    for (const part of parts) {
+      // Recheck each unsent balance. A changed second leg leaves the completed leg recorded.
+      try {
+        const fresh = await this.estimate(part.kind, p.destination);
+        if (fresh.fingerprint !== part.fingerprint)
+          throw Error(
+            "Wallet or fees changed; review the remaining balance again",
+          );
+      } catch (e) {
+        p.status = parts.some((x: any) => x.status === "broadcast")
+          ? "partial"
+          : "cancelled";
+        p.error = (e as Error).message;
+        this.save(p);
+        return p;
+      }
+      part.status = "submitted";
       this.save(p);
-      return p;
-    } catch (e) {
-      p.status = "unknown";
-      p.error =
-        "Check Bark wallet transactions before another withdrawal; the broadcast result is uncertain.";
-      this.save(p);
-      throw Error(p.error);
+      try {
+        const result = await this.bark.api<any>(
+          part.kind === "ark" ? "/wallet/offboard/all" : "/onchain/drain",
+          part.kind === "ark"
+            ? { address: p.destination }
+            : { destination: p.destination },
+        );
+        part.txid = result.offboard_txid ?? result.txid;
+        if (!/^[0-9a-f]{64}$/.test(part.txid))
+          throw Error("Unexpected withdrawal response");
+        part.status = "broadcast";
+        p.txid = part.txid;
+        this.save(p);
+      } catch (e) {
+        part.status = "unknown";
+        p.status = "unknown";
+        p.error =
+          "Check Bark wallet transactions before another withdrawal; the broadcast result is uncertain.";
+        this.save(p);
+        throw Error(p.error);
+      }
     }
+    p.status = "broadcast";
+    this.save(p);
+    return p;
   }
 }
