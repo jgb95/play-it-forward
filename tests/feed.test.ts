@@ -178,3 +178,56 @@ test("feed pagination pins run and cutoff, survives restart and accounts for a 1
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("legacy live journal methods are recovered from original receipts without rewriting history", () => {
+  const store = new Store(":memory:", config, "mainnet");
+  try {
+    for (const method of ["lightning", "ark"] as const) {
+      const id = "request-" + method;
+      store.add({
+        id,
+        amount: 5000,
+        name: method + " visitor",
+        method,
+        destination: "private",
+        uri: "private",
+        expires: null,
+        created: 1,
+        status: "pending",
+        received: 0,
+      });
+      const credit = store.credit({
+        key: "receipt-" + method,
+        requestId: id,
+        amount: 5000,
+      })!;
+      const old = {
+        amount: credit.amount,
+        name: credit.name,
+        total: credit.total,
+        level: credit.level,
+        previousLevel: credit.previousLevel,
+      };
+      store.db
+        .prepare("UPDATE events SET payload=? WHERE id=?")
+        .run(JSON.stringify(old), credit.id);
+    }
+    const history = store.history();
+    assert.deepEqual(
+      history.events.map((e) => e.payload.method),
+      ["lightning", "ark"],
+    );
+    assert.deepEqual(
+      store.feed().entries.map((e) => e.method),
+      ["ark", "lightning"],
+    );
+    assert.equal(store.state().total, 10000);
+    const originals = store.db
+      .prepare("SELECT payload FROM events WHERE kind='donation'")
+      .all();
+    assert.ok(originals.every((e) => !JSON.parse(String(e.payload)).method));
+    assert.ok(!JSON.stringify(store.feed()).includes("private"));
+  } finally {
+    store.close();
+  }
+});

@@ -417,9 +417,35 @@ export class Store {
       payload: string;
       created: number;
     }[];
-    const events = rows
-      .slice(0, limit)
-      .map((x) => ({ ...x, payload: JSON.parse(x.payload) }));
+    const events = rows.slice(0, limit).map((x) => {
+      const payload = JSON.parse(x.payload);
+      if (
+        x.kind === "donation" &&
+        !["lightning", "bitcoin", "ark"].includes(payload.method)
+      ) {
+        // Early journals omitted receipt identity and method. Recover only from
+        // attributable ledger rows; never infer a network from the gift size.
+        const matches = this.db
+          .prepare(
+            `SELECT r.key, q.method FROM receipts r JOIN requests q ON q.id=r.request_id
+           WHERE q.run_id=? AND r.amount=? AND q.name=?
+           AND (? IS NULL OR q.id=?) AND (? IS NULL OR r.key=?)`,
+          )
+          .all(
+            runId,
+            payload.amount,
+            payload.name ?? "",
+            payload.requestId ?? null,
+            payload.requestId ?? null,
+            payload.receiptKey ?? null,
+            payload.receiptKey ?? null,
+          ) as { key: string; method: string }[];
+        const methods = new Set(matches.map((r) => r.method));
+        if (methods.size === 1) payload.method = matches[0].method;
+        if (matches.length === 1) payload.receiptKey = matches[0].key;
+      }
+      return { ...x, payload };
+    });
     const last = this.db
       .prepare(
         "SELECT payload FROM events WHERE kind='donation' AND id<=? AND id>? AND run_id=? ORDER BY id DESC LIMIT 1",
