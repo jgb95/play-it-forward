@@ -12,9 +12,12 @@ import type {
   AccelerationAttempt,
   StoryEvent,
   HistoryPage,
+  Sponsors,
 } from "../shared/model.ts";
 import { ContributionFeed, type FeedPage } from "../shared/feed.ts";
-import { progression } from "../shared/model.ts";
+import { progression, sponsorsSchema } from "../shared/model.ts";
+import type { Locale } from "../shared/model.ts";
+import { withLocale, cityName } from "../shared/locales.ts";
 export class Store {
   db: DatabaseSync;
   nextConfig: Config;
@@ -59,7 +62,12 @@ export class Store {
     }
     this.db
       .prepare("INSERT OR IGNORE INTO runs VALUES(?,?,?,?,NULL)")
-      .run(key, "Berlin adventure", this.metadata("storyConfig")!, Date.now());
+      .run(
+        key,
+        `${cityName(config)} adventure`,
+        this.metadata("storyConfig")!,
+        Date.now(),
+      );
     this.db.exec("COMMIT");
     const active = this.db
       .prepare("SELECT config FROM runs WHERE id=?")
@@ -215,7 +223,7 @@ export class Store {
   reset() {
     if (this.mode !== "demo")
       throw Error("Reset is available only in demo mode");
-    this.startRun("Rehearsal adventure");
+    this.startRun("Rehearsal adventure", this.config.locale);
   }
   requestRun(id: string): string | undefined {
     return this.db.prepare("SELECT run_id FROM requests WHERE id=?").get(id)
@@ -247,9 +255,15 @@ export class Store {
       .prepare("INSERT OR REPLACE INTO metadata VALUES('featuredRun',?)")
       .run(id);
   }
-  startRun(name: string) {
+  startRun(name: string, locale?: Locale, sponsors?: Sponsors) {
     if (!name.trim() || name.length > 80)
       throw Error("Enter a run name of 1–80 characters");
+    const nextConfig =
+      locale === undefined
+        ? structuredClone(this.nextConfig)
+        : withLocale(this.nextConfig, locale);
+    if (sponsors !== undefined)
+      nextConfig.sponsors = sponsorsSchema.parse(sponsors);
     const id = randomUUID(),
       now = Date.now();
     this.db.exec("BEGIN IMMEDIATE");
@@ -259,17 +273,17 @@ export class Store {
       if (!this.metadata("featuredRun")) this.featureRun(old);
       this.db
         .prepare("INSERT INTO runs VALUES(?,?,?,?,NULL)")
-        .run(id, name.trim(), JSON.stringify(this.nextConfig), now);
+        .run(id, name.trim(), JSON.stringify(nextConfig), now);
       this.db
         .prepare("UPDATE metadata SET value=? WHERE key='eventKey'")
         .run(id);
       this.db
         .prepare("UPDATE metadata SET value=? WHERE key='storyConfig'")
-        .run(JSON.stringify(this.nextConfig));
-      this.config = structuredClone(this.nextConfig);
+        .run(JSON.stringify(nextConfig));
       this.setEventMode("live");
       this.journal("reset", {});
       this.db.exec("COMMIT");
+      this.config = nextConfig;
       return id;
     } catch (e) {
       this.db.exec("ROLLBACK");

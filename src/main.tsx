@@ -9,6 +9,7 @@ import { createRoot } from "react-dom/client";
 import QRCode from "qrcode";
 import {
   progression,
+  sponsorsSchema,
   chapterRecruit,
   giftPresets,
   type StoryEvent,
@@ -22,6 +23,7 @@ import {
   type Celebration,
   type Contribution,
   type Method,
+  type Sponsors,
 } from "../shared/model";
 import {
   ContributionFeed,
@@ -29,6 +31,10 @@ import {
   type FeedPage,
 } from "../shared/feed";
 import { background, render, type Trail } from "./world";
+import { cityName, locales } from "../shared/locales";
+import { SponsorReel } from "./SponsorReel";
+import { SponsorEditor } from "./SponsorEditor";
+import { startCityMusic, cityScores } from "./music";
 import { defaultPresentation, type Presentation } from "../shared/presentation";
 import { CelebrationQueue, blendMagic } from "./cinema";
 import {
@@ -120,22 +126,19 @@ function useJourney() {
                 : p,
             ),
           );
-          source.addEventListener("snapshot", (e) => {
+          function restoreSnapshot(e: Event) {
+            // Reset/reconnect carries config and totals in the same event, so a
+            // later receipt cannot race a separate configuration request.
+            const { config, ...state } = JSON.parse((e as MessageEvent).data);
             setData((p) =>
-              p ? { ...p, state: JSON.parse((e as MessageEvent).data) } : p,
+              p ? { ...p, config: config ?? p.config, state } : p,
             );
             setEvents([]);
             setStoryEvents([]);
             setRestore((v) => v + 1);
-          });
-          source.addEventListener("reset", (e) => {
-            setData((p) =>
-              p ? { ...p, state: JSON.parse((e as MessageEvent).data) } : p,
-            );
-            setEvents([]);
-            setStoryEvents([]);
-            setRestore((v) => v + 1);
-          });
+          }
+          source.addEventListener("snapshot", restoreSnapshot);
+          source.addEventListener("reset", restoreSnapshot);
           source.addEventListener("acceleration", (e) => {
             const v = JSON.parse((e as MessageEvent).data);
             setStoryEvents((p) =>
@@ -371,12 +374,12 @@ function World({
       lastDisplayKey = "",
       storyUntil = 0;
     const backgrounds = new Map<string, HTMLCanvasElement>();
-    function sceneBackground(s: State) {
-      const key = `${s.chapter}/${s.vaultOpen}/${s.treasureTier}`;
+    function sceneBackground(s: State, cfg: Config) {
+      const key = `${cfg.locale ?? "berlin"}/${s.chapter}/${s.vaultOpen}/${s.treasureTier}`;
       if (!backgrounds.has(key))
         backgrounds.set(
           key,
-          background(s.chapter, s.vaultOpen, s.treasureTier),
+          background(s.chapter, s.vaultOpen, s.treasureTier, cfg.locale),
         );
       return backgrounds.get(key)!;
     }
@@ -756,7 +759,7 @@ function World({
         .map((_, i) => chapterRecruit(cfg, i))
         .filter((member) => shown.crew.includes(member.id));
       pickups = pickups.filter((p) => time - p.born < p.duration);
-      render(ctx, sceneBackground(shown), shown, time, trails, r, {
+      render(ctx, sceneBackground(shown, cfg), shown, time, trails, r, {
         x,
         pickups,
         express,
@@ -769,7 +772,7 @@ function World({
           ? undefined
           : chapterRecruit(cfg, pose.chapter),
         incoming: incoming
-          ? { bg: sceneBackground(incoming), state: incoming }
+          ? { bg: sceneBackground(incoming, cfg), state: incoming }
           : undefined,
       });
       const display = {
@@ -807,7 +810,7 @@ function World({
       ref={ref}
       width="640"
       height="300"
-      aria-label="Animated pixel-art courier and crew gathering Berlin for bitcoin++"
+      aria-label={`Animated pixel-art courier and crew gathering ${cityName(config)} for bitcoin++`}
       role="img"
     />
   );
@@ -1172,6 +1175,33 @@ function Screen({ presenting = false }: { presenting?: boolean }) {
     } | null>(null);
   const [pending, setPending] = useState(0);
   const audio = useRef<AudioContext | null>(null);
+  const musicLocale =
+    (session && playbackMode !== "live"
+      ? session.history.config.locale
+      : data?.config.locale) ?? "berlin";
+  useEffect(() => {
+    document.title = `Play It Forward · ${musicLocale === "seoul" ? "Seoul" : "Berlin"}`;
+  }, [musicLocale]);
+  useEffect(() => {
+    const context = audio.current;
+    if (!context) return;
+    if (!sound) {
+      void context.suspend();
+      return;
+    }
+    void context.resume();
+    return startCityMusic(
+      context,
+      musicLocale,
+      data?.presentation.volume ?? 0.45,
+    );
+  }, [sound, musicLocale, data?.presentation.volume]);
+  useEffect(
+    () => () => {
+      void audio.current?.close();
+    },
+    [],
+  );
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
     undefined,
   );
@@ -1207,7 +1237,9 @@ function Screen({ presenting = false }: { presenting?: boolean }) {
       const notes =
         event.level > event.previousLevel
           ? [130.81, 261.63, 329.63, 392, 523.25]
-          : [261.63, 329.63, 392];
+          : cityScores[musicLocale].notes
+              .slice(0, 3)
+              .map((n) => 440 * 2 ** ((n - 69) / 12));
       notes.forEach((frequency, i) => {
         const start = now + i * 0.19;
         [1, 2.002].forEach((harmonic, h) => {
@@ -1248,7 +1280,7 @@ function Screen({ presenting = false }: { presenting?: boolean }) {
     (data.state.eventMode === "archive" ? "/screen?replay=1" : "/donate");
   return (
     <main
-      className={`screen ${presenting ? "presentation" : "overview"} ${fullscreen ? "is-fullscreen" : ""}`}
+      className={`screen ${presenting ? "presentation" : "overview"} ${fullscreen ? "is-fullscreen" : ""} ${config.sponsors && (config.sponsors.headline.length || config.sponsors.supporting.length) ? "has-sponsors" : ""}`}
     >
       {!fullscreen && (
         <Header
@@ -1262,7 +1294,8 @@ function Screen({ presenting = false }: { presenting?: boolean }) {
         <section className="intro">
           <div>
             <p className="eyebrow">
-              A COMMUNITY ADVENTURE · SIX STOPS THROUGH BERLIN
+              A COMMUNITY ADVENTURE · SIX STOPS THROUGH{" "}
+              {cityName(config).toUpperCase()}
             </p>
             <h1>
               A little kindness.
@@ -1274,7 +1307,7 @@ function Screen({ presenting = false }: { presenting?: boolean }) {
             <p>
               {data.state.eventMode === "archive"
                 ? "A community adventure, saved to watch again."
-                : "Grow the community prize pool. Bring Berlin to bitcoin++."}
+                : `Grow the community prize pool. Bring ${cityName(config)} to bitcoin++.`}
             </p>
             <a
               className="primary"
@@ -1300,6 +1333,7 @@ function Screen({ presenting = false }: { presenting?: boolean }) {
         <div className="scene">
           {!preparing && (
             <World
+              key={data.state.eventKey}
               state={data.state}
               events={events}
               storyEvents={storyEvents}
@@ -1495,6 +1529,7 @@ function Screen({ presenting = false }: { presenting?: boolean }) {
           />
         </aside>
       </section>
+      <SponsorReel sponsors={config.sponsors} reduced={reduced} />
       <section className="journey">
         {presenting && (
           <div className="presentation-progress">
@@ -1511,7 +1546,9 @@ function Screen({ presenting = false }: { presenting?: boolean }) {
           </div>
         )}
         <div className="journey-heading">
-          <span className="eyebrow">OUR BERLIN JOURNEY</span>
+          <span className="eyebrow">
+            OUR {cityName(config).toUpperCase()} JOURNEY
+          </span>
           <span>
             {Math.min(100, Math.floor((state.total / config.goal) * 100))}% of{" "}
             {sats(config.goal)} sats <b>↗</b>
@@ -1816,15 +1853,17 @@ function Donate() {
         eventMode={data.state.eventMode}
       />
       <div className="mobile-heading">
-        <p className="eyebrow">BERLIN, LET’S BUILD SOMETHING TOGETHER.</p>
+        <p className="eyebrow">
+          {cityName(data.config).toUpperCase()}, LET’S BUILD SOMETHING TOGETHER.
+        </p>
         <h1>
           Your sats.
           <br />
           <em>Our adventure.</em>
         </h1>
         <p>
-          Help our courier explore Berlin and grow the community hackathon prize
-          pool.
+          Help our courier explore {cityName(data.config)} and grow the
+          community hackathon prize pool.
         </p>
       </div>
       <div className="donation-card">
@@ -1951,7 +1990,7 @@ function Donate() {
             <h2>The event is complete.</h2>
             <p>{sats(data.state.total)} sats raised together.</p>
             <a className="primary" href={BASE + "/screen?replay=1"}>
-              Replay our Berlin adventure ↗
+              Replay our {cityName(data.config)} adventure ↗
             </a>
           </>
         ) : (
@@ -2056,7 +2095,21 @@ function RunAndWalletControls({
   health: any;
   refresh: () => Promise<void>;
 }) {
-  const [name, setName] = useState("Berlin adventure"),
+  const [locale, setLocale] = useState<"berlin" | "seoul">(
+    health.locale ?? "berlin",
+  );
+  const [sponsors, setSponsors] = useState<Sponsors>(
+    () =>
+      health.sponsorPresets?.[health.locale ?? "berlin"] ?? {
+        headline: [],
+        supporting: [],
+        seconds: 8,
+      },
+  );
+  const validSponsors = sponsorsSchema.safeParse(sponsors).success;
+  const [name, setName] = useState(
+      `${health.locale === "seoul" ? "Seoul" : "Berlin"} adventure`,
+    ),
     [destination, setDestination] = useState(""),
     [wallet, setWallet] = useState<any>(null),
     [review, setReview] = useState<any>(null),
@@ -2086,6 +2139,34 @@ function RunAndWalletControls({
             donations remain with the run that issued their payment request.
             Wallet funds stay in the shared organizer wallet.
           </p>
+          <label htmlFor="run-locale">Next run’s city</label>
+          <select
+            id="run-locale"
+            value={locale}
+            disabled={busy}
+            onChange={(e) => {
+              const value = e.target.value as "berlin" | "seoul";
+              setLocale(value);
+              setName(`${value === "seoul" ? "Seoul" : "Berlin"} adventure`);
+              setSponsors(
+                health.sponsorPresets?.[value] ?? {
+                  headline: [],
+                  supporting: [],
+                  seconds: 8,
+                },
+              );
+            }}
+          >
+            {locales.map((city) => (
+              <option key={city.id} value={city.id}>
+                {city.name}
+              </option>
+            ))}
+          </select>
+          <p>
+            The next run uses this city’s scenery and soundtrack. Saved replays
+            keep their original city.
+          </p>
           <label htmlFor="run-name">Next run’s name</label>
           <input
             id="run-name"
@@ -2093,9 +2174,20 @@ function RunAndWalletControls({
             maxLength={80}
             onChange={(e) => setName(e.target.value)}
           />
+          <SponsorEditor
+            value={sponsors}
+            onChange={setSponsors}
+            disabled={busy}
+          />
+          {!validSponsors && (
+            <p role="status">
+              Give every sponsor a name, use a bundled PNG/JPEG/WebP/SVG logo
+              path or leave it empty, and choose 4–60 seconds per rotation.
+            </p>
+          )}
           <button
             className="secondary"
-            disabled={busy || !name.trim()}
+            disabled={busy || !name.trim() || !validSponsors}
             onClick={() => {
               if (
                 window.confirm(
@@ -2103,7 +2195,7 @@ function RunAndWalletControls({
                 )
               )
                 void action(async () => {
-                  await api("/admin/runs", { name });
+                  await api("/admin/runs", { name, locale, sponsors });
                   setMessage("Previous run saved. New adventure started.");
                 });
             }}
@@ -2308,7 +2400,7 @@ function Admin() {
     [logged, setLogged] = useState(false),
     [health, setHealth] = useState<any>(null),
     [amount, setAmount] = useState(1),
-    [name, setName] = useState("Berlin community"),
+    [name, setName] = useState("Community supporter"),
     [message, setMessage] = useState(""),
     [busy, setBusy] = useState(false),
     [burstCount, setBurstCount] = useState(10),
@@ -2641,7 +2733,7 @@ function Admin() {
                         1,
                         (data?.config.goal ?? 1) - (data?.state.total ?? 0),
                       ),
-                      name: "The Berlin community",
+                      name: `The ${data ? cityName(data.config) : "local"} community`,
                     })
                   }
                 >

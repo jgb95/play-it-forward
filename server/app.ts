@@ -11,7 +11,8 @@ import type {
   Observation,
   AccelerationAttempt,
 } from "../shared/model.ts";
-import { contributionSchema } from "../shared/model.ts";
+import { contributionSchema, localeSchema } from "../shared/model.ts";
+import { locales, cityName, withLocale } from "../shared/locales.ts";
 import {
   defaultPresentation,
   presentationSchema,
@@ -47,6 +48,8 @@ export function createApp(
   if (options.rehearsal) app.use("/rehearsal", options.rehearsal);
   app.disable("x-powered-by");
   app.set("trust proxy", "loopback");
+  // A complete sponsor roster can exceed the smaller payment request limit.
+  app.post("/api/admin/runs", express.json({ limit: "32kb" }));
   app.use(express.json({ limit: "4kb" }));
   const sessions = new Map<string, number>(),
     limits = new Map<string, { count: number; until: number }>(),
@@ -322,7 +325,12 @@ export function createApp(
           e.id,
         );
     }
-    send(res, "snapshot", current, current.eventId);
+    send(
+      res,
+      "snapshot",
+      { ...current, config: store.config },
+      current.eventId,
+    );
     send(res, "presentation", presentation);
     clients.add(res);
     const heartbeat = setInterval(() => res.write(": heartbeat\n\n"), 15000);
@@ -466,6 +474,18 @@ export function createApp(
       presentation,
       movie: movie.status(Date.now()),
       runs: store.runs(),
+      locale: store.config.locale ?? "berlin",
+      locales,
+      sponsorPresets: Object.fromEntries(
+        locales.map((city) => [
+          city.id,
+          withLocale(store.nextConfig, city.id).sponsors ?? {
+            headline: [],
+            supporting: [],
+            seconds: 8,
+          },
+        ]),
+      ),
       withdrawalsEnabled: !!withdrawals,
       withdrawals: withdrawals?.list() ?? [],
       liveReady: store.mode === "mainnet" && !syncError && lastSync !== null,
@@ -482,10 +502,14 @@ export function createApp(
   });
   app.post("/api/admin/runs", (req, res) => {
     try {
+      const locale =
+        req.body.locale === undefined
+          ? undefined
+          : localeSchema.parse(req.body.locale);
+      store.startRun(String(req.body.name ?? ""), locale, req.body.sponsors);
       movie.stop();
       stagedMovie = undefined;
-      store.startRun(String(req.body.name ?? ""));
-      broadcast("reset", state(), state().eventId);
+      broadcast("reset", { ...state(), config: store.config }, state().eventId);
       res.json(store.runs());
     } catch (e) {
       res.status(400).json({ error: (e as Error).message });
@@ -607,7 +631,7 @@ export function createApp(
         req.body.action === "detect"
           ? await demoDetection(
               req.body.amount,
-              req.body.name ?? "Berlin supporter",
+              req.body.name ?? `${cityName(store.config)} supporter`,
             )
           : await demoAction(req.body.action, req.body.key),
       );
@@ -636,7 +660,7 @@ export function createApp(
     movie.stop();
     stagedMovie = undefined;
     store.reset();
-    broadcast("reset", state(), state().eventId);
+    broadcast("reset", { ...state(), config: store.config }, state().eventId);
     res.json(state());
   });
   app.post("/api/admin/simulate", async (req, res, next) => {
@@ -654,7 +678,7 @@ export function createApp(
       }
       const d = contributionSchema.safeParse({
         amount: req.body.amount,
-        name: req.body.name ?? "Berlin community",
+        name: req.body.name ?? `${cityName(store.config)} community`,
         method: "lightning",
       });
       if (!d.success) {
@@ -776,13 +800,17 @@ export function createApp(
             await demoAction("drop", stagedMovie.observation.key);
             const replacement = await demoDetection(
               amount,
-              "Berlin movie crew",
+              `${cityName(store.config)} movie crew`,
             );
             await demoAction("confirm", replacement.key);
           } else await demoAction("confirm", stagedMovie.observation.key);
           stagedMovie = undefined;
         } else {
-          const c = await adapter.create(amount, "Berlin movie crew", method);
+          const c = await adapter.create(
+            amount,
+            `${cityName(store.config)} movie crew`,
+            method,
+          );
           store.add(c);
           credit({ key: "demo:" + c.id, requestId: c.id, amount: c.amount });
         }
@@ -804,7 +832,7 @@ export function createApp(
     const dir = resolve("dist");
     app.use(express.static(dir, { maxAge: "1h" }));
     app.get("/{*path}", (_req, res) =>
-      res.sendFile(resolve(dir, "index.html")),
+      res.sendFile("index.html", { root: dir }),
     );
   }
   app.use(
@@ -814,6 +842,15 @@ export function createApp(
       res: express.Response,
       _next: express.NextFunction,
     ) => {
+      if (
+        typeof error === "object" &&
+        error !== null &&
+        "type" in error &&
+        error.type === "entity.too.large"
+      ) {
+        res.status(413).json({ error: "Request body is too large" });
+        return;
+      }
       res.status(503).json({
         error:
           error instanceof SyntaxError

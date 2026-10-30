@@ -1,8 +1,35 @@
 import { z } from "zod";
 export const methodSchema = z.enum(["lightning", "bitcoin", "ark"]);
 export type Method = z.infer<typeof methodSchema>;
+export const localeSchema = z.enum(["berlin", "seoul"]);
+export type Locale = z.infer<typeof localeSchema>;
+const sponsorSchema = z.object({
+  name: z.string().trim().min(1).max(80),
+  // Bundled assets only: no remote tracking, credentials, query strings or traversal.
+  logo: z
+    .string()
+    .regex(/^\/(?:[a-zA-Z0-9_-]+\/)*[a-zA-Z0-9_-]+\.(?:png|jpe?g|webp|svg)$/i)
+    .optional(),
+  tier: z.string().trim().min(1).max(40).optional(),
+});
+export const sponsorLimits = { headline: 3, supporting: 30 } as const;
+export const sponsorsSchema = z.object({
+  headline: z.array(sponsorSchema).max(sponsorLimits.headline).default([]),
+  supporting: z.array(sponsorSchema).max(sponsorLimits.supporting).default([]),
+  seconds: z.number().min(4).max(60).default(8),
+});
+export type Sponsors = z.infer<typeof sponsorsSchema>;
+export type Sponsor = z.infer<typeof sponsorSchema>;
 export const configSchema = z
   .object({
+    locale: localeSchema.optional(),
+    sponsors: sponsorsSchema.optional(),
+    sponsorLocales: z
+      .object({
+        berlin: sponsorsSchema.optional(),
+        seoul: sponsorsSchema.optional(),
+      })
+      .optional(),
     title: z.string().min(1).max(60),
     event: z.string().min(1).max(100),
     publicUrl: z.url(),

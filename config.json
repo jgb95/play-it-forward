@@ -1,12 +1,8 @@
 {
   "title": "Play It Forward",
-  "event": "bitcoin++ Berlin \u00b7 payments edition",
+  "event": "bitcoin++ Berlin · payments edition",
   "publicUrl": "http://localhost:5173",
-  "methods": [
-    "lightning",
-    "bitcoin",
-    "ark"
-  ],
+  "methods": ["lightning", "bitcoin", "ark"],
   "chapters": [
     {
       "scene": "station",
@@ -88,10 +84,138 @@
     }
   ],
   "goal": 2000000,
-  "contributionPresets": [
-    1000,
-    5000,
-    10000,
-    50000
-  ]
+  "contributionPresets": [1000, 5000, 10000, 50000],
+  "locale": "berlin",
+  "sponsorLocales": {
+    "seoul": {
+      "headline": [
+        {
+          "name": "Human Rights Foundation",
+          "logo": "/sponsors/hrf.svg"
+        },
+        {
+          "name": "NYDIG",
+          "logo": "/sponsors/nydig.svg"
+        }
+      ],
+      "supporting": [
+        {
+          "name": "Btrust",
+          "logo": "/sponsors/btrust.jpg",
+          "tier": "Title sponsors"
+        },
+        {
+          "name": "Stakwork",
+          "logo": "/sponsors/stakwork.svg",
+          "tier": "Workshop sponsors"
+        },
+        {
+          "name": "Soapbox",
+          "logo": "/sponsors/soapbox.svg",
+          "tier": "Hackathon sponsors"
+        },
+        {
+          "name": "Base58",
+          "logo": "/sponsors/base58.svg",
+          "tier": "Sponsors"
+        },
+        {
+          "name": "LX",
+          "logo": "/sponsors/lx.jpeg",
+          "tier": "Sponsors"
+        },
+        {
+          "name": "btc++ insider edition",
+          "logo": "/sponsors/insider.png",
+          "tier": "Media partners"
+        }
+      ],
+      "seconds": 8
+    }
+  },
+  "sponsors": {
+    "headline": [
+      {
+        "name": "Human Rights Foundation",
+        "logo": "/sponsors/hrf.svg"
+      },
+      {
+        "name": "NYDIG",
+        "logo": "/sponsors/nydig.svg"
+      }
+    ],
+    "supporting": [
+      {
+        "name": "Mempool.space",
+        "logo": "/sponsors/mempool.svg",
+        "tier": "Title sponsors"
+      },
+      {
+        "name": "Stakwork",
+        "logo": "/sponsors/stakwork.svg",
+        "tier": "Workshop sponsors"
+      },
+      {
+        "name": "Soapbox",
+        "logo": "/sponsors/soapbox.svg",
+        "tier": "Hackathon sponsors"
+      },
+      {
+        "name": "[[alloc] init]",
+        "logo": "/sponsors/allocinit.svg",
+        "tier": "Silver sponsors"
+      },
+      {
+        "name": "Glimpse Markets",
+        "logo": "/sponsors/glimpse.svg",
+        "tier": "Silver sponsors"
+      },
+      {
+        "name": "Layer2Labs",
+        "logo": "/sponsors/layer2labs.png",
+        "tier": "Silver sponsors"
+      },
+      {
+        "name": "Base58",
+        "logo": "/sponsors/base58.svg",
+        "tier": "Sponsors"
+      },
+      {
+        "name": "Cake Wallet",
+        "logo": "/sponsors/cakewallet.png",
+        "tier": "Sponsors"
+      },
+      {
+        "name": "Electrum",
+        "logo": "/sponsors/electrum.png",
+        "tier": "Sponsors"
+      },
+      {
+        "name": "Flame",
+        "logo": "/sponsors/flame.svg",
+        "tier": "Sponsors"
+      },
+      {
+        "name": "LX",
+        "logo": "/sponsors/lx.jpeg",
+        "tier": "Sponsors"
+      },
+      {
+        "name": "Second",
+        "logo": "/sponsors/second.svg",
+        "tier": "Sponsors"
+      },
+      {
+        "name": "btc++ insider edition",
+        "logo": "/sponsors/insider.png",
+        "tier": "Media sponsors"
+      },
+      {
+        "name": "Nodesignal Podcast",
+        "logo": "/sponsors/nodesignal.jpg",
+        "tier": "Media sponsors"
+      }
+    ],
+    "seconds": 8
+  }
 }

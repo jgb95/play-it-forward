@@ -1,8 +1,8 @@
 # Play It Forward
 
-**A little kindness. A long way.** An open-source, self-hostable donation adventure for bitcoin++ Berlin, payments edition.
+**A little kindness. A long way.** An open-source, self-hostable donation adventure for bitcoin++ events, with Berlin and Seoul editions.
 
-A shared human courier explores six Berlin locations while contributions grow a real community bonus prize pool. Donations unlock streetwear accessories, ambient celebrations, and a hackathon hall. All progression is driven by **cumulative sats received**, never by the number of donations. Milestones do not spend or reserve funds.
+A shared human courier explores six locations in Berlin or Seoul while contributions grow a real community bonus prize pool. Donations unlock streetwear accessories, ambient celebrations, and a hackathon hall. All progression is driven by **cumulative sats received**, never by the number of donations. Milestones do not spend or reserve funds.
 
 ## Run the playable demo
 
@@ -47,7 +47,7 @@ The bottom progress bar measures sats toward the hall; the chapter tracker measu
 
 ## Configure an event
 
-Edit `config.json` (or set `CONFIG_PATH`). Branding, chapter names, scene assignments, subtitles, accessory rewards, milestone amounts, goal, contribution methods, and public URL are configurable. The current renderer includes six Berlin scenes; a new visual theme requires supplying new scene artwork/rendering code. There is no theme editor or multi-event platform in this prototype.
+Edit `config.json` (or set `CONFIG_PATH`). Branding, chapter names, scene assignments, subtitles, accessory rewards, milestone amounts, goal, contribution methods, and public URL are configurable. The operator desk selects **Berlin or Seoul** for the next saved run, including six city scenes and an original city soundtrack. Sponsor logos stay sharp outside the pixel-art canvas, with two or three headline positions and a configurable supporting reel. See [sponsor configuration and design-file import](docs/SPONSORS.md) for PNG/JPEG, TIFF, PSD and PDF-compatible Illustrator artwork.
 
 `PUBLIC_URL` overrides the configured URL. All secrets belong in `.env`, never in the configuration or frontend. The app supports `demo`, `signet`, and `mainnet`; each has a distinct ledger file under `DATA_DIR`.
 
@@ -89,7 +89,7 @@ For manual UI checks, open the screen and mobile page together; send a 1,000-sat
 
 ## Current limits
 
-This is a hackathon prototype, with a working simulated game and a Bark receive adapter. Lightning settlement was verified with a 5,000-sat Phoenix payment on a Linux VPS, including restart and duplicate reconciliation checks. Bitcoin and Ark receiving APIs were checked on mainnet without funded settlement; funded signet coverage and the physical venue QR scan remain operator checks. A one-confirmation Bitcoin credit is treated as durable; automatic reorg reversals are not implemented. No organizer spending, refund, payout, Cashu or voting is included. Live Express remains disabled pending a donor-paid verification test.
+This is a hackathon prototype, with a working simulated game and a Bark receive adapter. Lightning settlement was verified with a 5,000-sat Phoenix payment on a Linux VPS, including restart and duplicate reconciliation checks. Bitcoin and Ark receiving APIs were checked on mainnet without funded settlement; funded signet coverage and the physical venue QR scan remain operator checks. A one-confirmation Bitcoin credit is treated as durable; automatic reorg reversals are not implemented. Operator whole-wallet withdrawals are documented below. Refunds, prize payouts, Cashu and voting are not implemented. Live Express remains disabled pending a donor-paid verification test.
 
 MIT licensed original code and procedural art. Bundled DM Sans and IBM Plex Mono fonts retain their upstream SIL Open Font License. bitcoin++ branding remains the event's branding.
 

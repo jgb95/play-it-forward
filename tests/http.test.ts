@@ -1,6 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import {
+  readFileSync,
+  mkdtempSync,
+  mkdirSync,
+  writeFileSync,
+  rmSync,
+} from "node:fs";
+import { execFileSync } from "node:child_process";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { configSchema } from "../shared/model.ts";
 import { Store } from "../server/store.ts";
 import { SimulationAdapter } from "../server/payments.ts";
@@ -9,6 +18,55 @@ const config = configSchema.parse(
   JSON.parse(readFileSync("config.json", "utf8")),
 );
 const token = "test-operator-token-at-least-24";
+test("production page routes serve the app from a hidden checkout directory", () => {
+  const dir = mkdtempSync(join(tmpdir(), ".pif-static-"));
+  mkdirSync(join(dir, "dist"));
+  writeFileSync(
+    join(dir, "dist", "index.html"),
+    "<!doctype html><title>Test app</title>",
+  );
+  const code = `
+    import assert from "node:assert/strict";
+    import { Store } from ${JSON.stringify(new URL("../server/store.ts", import.meta.url).href)};
+    import { SimulationAdapter } from ${JSON.stringify(new URL("../server/payments.ts", import.meta.url).href)};
+    import { createApp } from ${JSON.stringify(new URL("../server/app.ts", import.meta.url).href)};
+    const store = new Store(":memory:", ${JSON.stringify(config)}, "demo");
+    const runtime = createApp(store, new SimulationAdapter(), ${JSON.stringify(token)});
+    const server = runtime.app.listen(0, "127.0.0.1");
+    await new Promise(resolve => server.once("listening", resolve));
+    try {
+      for (const path of ["/screen", "/donate", "/admin"]) {
+        const response = await fetch("http://127.0.0.1:" + server.address().port + path);
+        assert.equal(response.status, 200, path);
+        assert.equal(await response.text(), "<!doctype html><title>Test app</title>");
+      }
+    } finally {
+      runtime.close();
+      await new Promise(resolve => server.close(resolve));
+      store.close();
+    }
+  `;
+  try {
+    execFileSync(
+      process.execPath,
+      [
+        "--import",
+        import.meta.resolve("tsx"),
+        "--input-type=module",
+        "-e",
+        code,
+      ],
+      {
+        cwd: dir,
+        timeout: 15000,
+        maxBuffer: 65536,
+        stdio: "pipe",
+      },
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
 async function setup(mode: "demo" | "signet" = "demo") {
   const store = new Store(":memory:", config, mode);
   const runtime = createApp(store, new SimulationAdapter(), token, {
@@ -124,6 +182,31 @@ test("SSE resumes bounded receipt history then supplies authoritative state", as
     assert.match(str, /"total":5000/);
     controller.abort();
   } finally {
+    await s.close();
+  }
+});
+
+test("new-run SSE sends its captured city configuration with the reset state", async () => {
+  const s = await setup();
+  const controller = new AbortController();
+  try {
+    const login = await s.post("/admin/login", { token });
+    const cookie = login.headers.get("set-cookie")!.split(";")[0];
+    const response = await fetch(s.base + "/api/events", {
+      signal: controller.signal,
+    });
+    const reader = response.body!.getReader();
+    await reader.read();
+    await s.post("/admin/runs", { name: "Seoul SSE", locale: "seoul" }, cookie);
+    const chunk = new TextDecoder().decode((await reader.read()).value);
+    assert.match(chunk, /event: reset/);
+    const payload = JSON.parse(chunk.split("data: ")[1].split("\n")[0]);
+    assert.equal(payload.total, 0);
+    assert.equal(payload.config.locale, "seoul");
+    assert.equal(payload.config.chapters[0].name, "Seoul Station");
+    assert.equal(payload.eventKey, s.store.state().eventKey);
+  } finally {
+    controller.abort();
     await s.close();
   }
 });

@@ -1,0 +1,28 @@
+Sponsor logos retain their owners' copyright and trademarks. These are event
+branding assets, not artwork licensed under this project's MIT license.
+
+Sources: https://btcpp.dev/seoul (retrieved 2026-10-03)
+         https://btcpp.dev/berlin26 (retrieved 2026-10-04)
+
+Human Rights Foundation: https://btcpp.nyc3.digitaloceanspaces.com/sponsors/hrf.svg
+NYDIG: https://btcpp.nyc3.digitaloceanspaces.com/sponsors/nydig_dark.svg
+Btrust: https://btcpp.nyc3.digitaloceanspaces.com/sponsors/68877943d622.jpg
+Stakwork: https://btcpp.nyc3.digitaloceanspaces.com/sponsors/stak.svg
+Soapbox: https://btcpp.nyc3.digitaloceanspaces.com/sponsors/soapbox.svg
+Base58: https://btcpp.nyc3.digitaloceanspaces.com/sponsors/base58_logo_blk.svg
+LX: https://btcpp.nyc3.digitaloceanspaces.com/sponsors/be9e6c539851.jpeg
+btc++ insider edition: https://btcpp.nyc3.digitaloceanspaces.com/sponsors/riga-insider.png
+
+Mempool.space: https://btcpp.nyc3.digitaloceanspaces.com/sponsors/mempool-space-logo-black.svg
+[[alloc] init]: https://btcpp.nyc3.digitaloceanspaces.com/sponsors/allocinit_2.svg
+Glimpse Markets: https://btcpp.nyc3.digitaloceanspaces.com/sponsors/4a5be63fd609.svg
+Layer2Labs: https://btcpp.nyc3.digitaloceanspaces.com/sponsors/layer2labs.png
+Cake Wallet: https://btcpp.nyc3.digitaloceanspaces.com/sponsors/cakewallet.png
+Electrum: https://btcpp.nyc3.digitaloceanspaces.com/sponsors/electrum.png
+Flame: https://btcpp.nyc3.digitaloceanspaces.com/sponsors/7858b8d84ac3.svg
+Second: https://btcpp.nyc3.digitaloceanspaces.com/sponsors/2d4a6adcafc5.svg
+Nodesignal Podcast: https://btcpp.nyc3.digitaloceanspaces.com/sponsors/nodesignal.jpg
+
+Artwork is bundled as supplied for local venue playback without remote image requests.
+Trailing line whitespace in allocinit.svg has been normalized; SVG shapes are unchanged.
+Verify the current event roster with the organizer before presenting.
