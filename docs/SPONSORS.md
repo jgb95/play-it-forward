@@ -27,6 +27,8 @@ In the operator desk, open **Sponsors for the next run** under **Game runs & rep
 }
 ```
 
+The next-run endpoint accepts up to 32 KB of JSON for a full roster; other request bodies retain their 4 KB limit. Oversized bodies return HTTP 413.
+
 At most three sponsors may stay visible and 30 supporters may rotate, with 4–60 seconds per card. Names can also be supplied without images. Logos must use local asset paths with letters, digits, hyphens and underscores, ending in PNG, JPG, JPEG, WebP or SVG. Query strings, remote hosts and parent directory traversal are rejected. Put files under `public/sponsors` and rebuild to bundle them. Keep old asset filenames immutable so saved replays retain their artwork. The same sponsor object works in either array: placement and order are configuration, with no sponsor names hardcoded in the reel.
 
 The bundled rosters come from the official [Berlin payments edition](https://btcpp.dev/berlin26), reviewed October 4, 2026, and [Seoul privacy edition](https://btcpp.dev/seoul), reviewed October 3, 2026. Both presets keep HRF and NYDIG visible. Berlin has 14 rotating sponsors and media partners; Seoul has six. The site's "Title sponsors" tier remains attached to Mempool.space in Berlin and Btrust in Seoul. Either can be promoted into the third fixed slot through the editor. Review the roster and logo colors with the organizer before a venue run. Logo ownership and source URLs are in `public/sponsors/ATTRIBUTION.txt`.
