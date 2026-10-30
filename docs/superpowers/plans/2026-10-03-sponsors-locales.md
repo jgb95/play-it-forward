@@ -13,4 +13,5 @@
 - [x] Add original synthesized city music in `src/music.ts`; use the existing explicit sound opt-in and volume setting, and stop scheduled audio on mute/unmount.
 - [x] Add `scripts/import-sponsor.ts` and import tests. Read source files locally; convert the first TIFF page/PSD composite/PDF-compatible AI page to sRGB PNG, preserving aspect ratio and transparency. Refuse overwrite and unsupported sources.
 - [x] Bundle official Seoul headline logos with source attribution. Document per-city sponsor overrides, import limits and the next-run selection behavior.
-- [x] Run `npm exec --package=pnpm@11.19.0 -- pnpm test` and `pnpm build`; exercise the isolated demo in the collaborative browser. Review the full diff and public content before submitting the official-repository PR. Submission is blocked by repository write access; no fork was created.
+- [x] Support the October 4 requirement for two or three interchangeable fixed sponsors and variable rosters. Add next-run editing, validate before saving, preserve captured replay rosters, and bundle the official Berlin 2026 sponsor list with attribution.
+- [x] Verify the integrated branch with the regression suite and production build. The contribution fork is available; prepare the reviewed branch for an upstream PR.

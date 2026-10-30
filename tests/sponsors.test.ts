@@ -39,3 +39,25 @@ test("events without sponsors produce no empty presentation panel", () => {
     "",
   );
 });
+
+test("three persistent sponsors remain present alongside a twelve-sponsor rotation", () => {
+  const sponsors = {
+    headline: [{ name: "First" }, { name: "Second" }, { name: "Third" }],
+    supporting: Array.from({ length: 12 }, (_, i) => ({
+      name: `Partner ${i + 1}`,
+    })),
+    seconds: 4,
+  };
+  const rotating = renderToStaticMarkup(
+    React.createElement(SponsorReel, { sponsors, reduced: false }),
+  );
+  for (const name of ["First", "Second", "Third", "Partner 1"])
+    assert.match(rotating, new RegExp(`<strong>${name}</strong>`));
+  assert.match(rotating, /Sponsor 1 of 12/);
+  assert.doesNotMatch(rotating, /<strong>Partner 2<\/strong>/);
+  const staticRoster = renderToStaticMarkup(
+    React.createElement(SponsorReel, { sponsors, reduced: true }),
+  );
+  for (const sponsor of [...sponsors.headline, ...sponsors.supporting])
+    assert.match(staticRoster, new RegExp(`<strong>${sponsor.name}</strong>`));
+});

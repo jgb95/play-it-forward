@@ -6,7 +6,9 @@ Seoul's original six scenes visit Seoul Station, Cheonggyecheon, Gwangjang Marke
 
 ## Configure a sponsor reel
 
-The screen displays up to two headline sponsors continuously while the supporting roster rotates alongside the adventure. Totals and the QR stay visible, including fullscreen. Reduced motion shows all supporters without rotation. A missing image shows the sponsor's name.
+The screen displays two or three main sponsors continuously while the supporting roster rotates alongside the adventure. Totals and the QR stay visible, including fullscreen. Reduced motion shows all supporters without rotation. A missing image shows the sponsor's name.
+
+In the operator desk, open **Sponsors for the next run** under **Game runs & replay**. Edit names, bundled logo paths and tiers; use **Keep visible** or **Rotate** to move any sponsor between groups. **Earlier**, **Later**, **Add** and **Remove** change the roster and rotation order. Choose the seconds per rotating card. Selecting another city loads its preset. These edits apply when you choose **Finish run & start new** and are captured with that run, including after a server restart. They do not rewrite the city presets in `config.json`.
 
 `config.json` accepts an optional `sponsors` object and optional `sponsorLocales.berlin` / `sponsorLocales.seoul` overrides. An override replaces the complete roster for that city; omit it to use the common roster. Use empty headline/supporting arrays to disable a city's sponsors. Configuration changes apply to the next run after a server restart, preserving earlier replay configurations.
 
@@ -25,9 +27,9 @@ The screen displays up to two headline sponsors continuously while the supportin
 }
 ```
 
-At most 30 supporters may rotate, with 4–60 seconds per card. Names can also be supplied without images. Logos must use local asset paths with letters, digits, hyphens and underscores, ending in PNG, JPG, JPEG, WebP or SVG. Query strings, remote hosts and parent directory traversal are rejected. Put files under `public/sponsors` and rebuild to bundle them. Keep old asset filenames immutable so saved replays retain their artwork.
+At most three sponsors may stay visible and 30 supporters may rotate, with 4–60 seconds per card. Names can also be supplied without images. Logos must use local asset paths with letters, digits, hyphens and underscores, ending in PNG, JPG, JPEG, WebP or SVG. Query strings, remote hosts and parent directory traversal are rejected. Put files under `public/sponsors` and rebuild to bundle them. Keep old asset filenames immutable so saved replays retain their artwork. The same sponsor object works in either array: placement and order are configuration, with no sponsor names hardcoded in the reel.
 
-The bundled Seoul roster comes from [the official event page](https://btcpp.dev/seoul), reviewed October 3, 2026. HRF and NYDIG occupy the headline positions. Btrust is a title sponsor; the configuration keeps that tier separate from the two headline positions. Review the roster and logo colors with the organizer before a venue run. Logo ownership and source URLs are in `public/sponsors/ATTRIBUTION.txt`.
+The bundled rosters come from the official [Berlin payments edition](https://btcpp.dev/berlin26), reviewed October 4, 2026, and [Seoul privacy edition](https://btcpp.dev/seoul), reviewed October 3, 2026. Both presets keep HRF and NYDIG visible. Berlin has 14 rotating sponsors and media partners; Seoul has six. The site's "Title sponsors" tier remains attached to Mempool.space in Berlin and Btrust in Seoul. Either can be promoted into the third fixed slot through the editor. Review the roster and logo colors with the organizer before a venue run. Logo ownership and source URLs are in `public/sponsors/ATTRIBUTION.txt`.
 
 ## Import design files
 
@@ -47,4 +49,4 @@ Output is sRGB PNG with transparency, capped at 2400 pixels on either axis witho
 
 Run the regression suite and production build. Import tests exercise real PNG/JPEG/TIFF/PSD/AI conversion when ImageMagick and Ghostscript are installed; environments without those tools skip the applicable import checks.
 
-On the isolated rehearsal desk, select Seoul and start a run. Open its screen, check headline/supporter logos, sound/mute and reduced motion, then run the rehearsal movie through all six locations. Reopen a saved Berlin run to verify that its original city remains. Check the deployed fullscreen layout and scan the QR with a physical phone before the event. Live payment and withdrawal verification still follows the existing payment runbook.
+On the isolated rehearsal desk, select Seoul, promote Btrust into the third fixed slot, and start a run. Open its screen, check all three fixed logos, the rotating roster, sound/mute and reduced motion, then run the rehearsal movie through all six locations. Reopen a saved Berlin run to verify that its original city and roster remain. Check the deployed fullscreen layout and scan the QR with a physical phone before the event. Live payment and withdrawal verification still follows the existing payment runbook.

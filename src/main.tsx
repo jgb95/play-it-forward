@@ -9,6 +9,7 @@ import { createRoot } from "react-dom/client";
 import QRCode from "qrcode";
 import {
   progression,
+  sponsorsSchema,
   chapterRecruit,
   giftPresets,
   type StoryEvent,
@@ -22,6 +23,7 @@ import {
   type Celebration,
   type Contribution,
   type Method,
+  type Sponsors,
 } from "../shared/model";
 import {
   ContributionFeed,
@@ -31,6 +33,7 @@ import {
 import { background, render, type Trail } from "./world";
 import { cityName, locales } from "../shared/locales";
 import { SponsorReel } from "./SponsorReel";
+import { SponsorEditor } from "./SponsorEditor";
 import { startCityMusic, cityScores } from "./music";
 import { defaultPresentation, type Presentation } from "../shared/presentation";
 import { CelebrationQueue, blendMagic } from "./cinema";
@@ -2091,6 +2094,15 @@ function RunAndWalletControls({
   const [locale, setLocale] = useState<"berlin" | "seoul">(
     health.locale ?? "berlin",
   );
+  const [sponsors, setSponsors] = useState<Sponsors>(
+    () =>
+      health.sponsorPresets?.[health.locale ?? "berlin"] ?? {
+        headline: [],
+        supporting: [],
+        seconds: 8,
+      },
+  );
+  const validSponsors = sponsorsSchema.safeParse(sponsors).success;
   const [name, setName] = useState(
       `${health.locale === "seoul" ? "Seoul" : "Berlin"} adventure`,
     ),
@@ -2132,6 +2144,13 @@ function RunAndWalletControls({
               const value = e.target.value as "berlin" | "seoul";
               setLocale(value);
               setName(`${value === "seoul" ? "Seoul" : "Berlin"} adventure`);
+              setSponsors(
+                health.sponsorPresets?.[value] ?? {
+                  headline: [],
+                  supporting: [],
+                  seconds: 8,
+                },
+              );
             }}
           >
             {locales.map((city) => (
@@ -2151,9 +2170,20 @@ function RunAndWalletControls({
             maxLength={80}
             onChange={(e) => setName(e.target.value)}
           />
+          <SponsorEditor
+            value={sponsors}
+            onChange={setSponsors}
+            disabled={busy}
+          />
+          {!validSponsors && (
+            <p role="status">
+              Give every sponsor a name, use a bundled PNG/JPEG/WebP/SVG logo
+              path or leave it empty, and choose 4–60 seconds per rotation.
+            </p>
+          )}
           <button
             className="secondary"
-            disabled={busy || !name.trim()}
+            disabled={busy || !name.trim() || !validSponsors}
             onClick={() => {
               if (
                 window.confirm(
@@ -2161,7 +2191,7 @@ function RunAndWalletControls({
                 )
               )
                 void action(async () => {
-                  await api("/admin/runs", { name, locale });
+                  await api("/admin/runs", { name, locale, sponsors });
                   setMessage("Previous run saved. New adventure started.");
                 });
             }}

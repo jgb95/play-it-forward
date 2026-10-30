@@ -275,7 +275,62 @@ h1 em {
 .sponsor-static .sponsor-card {
   flex: 1 0 110px;
 }
+.sponsor-editor {
+  margin-block: 20px;
+  border-block: 1px solid #cdd2cc;
+  padding-block: 14px;
+}
+.sponsor-editor summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.sponsor-editor fieldset {
+  min-width: 0;
+  border: 0;
+  padding: 0;
+  margin-block: 20px;
+}
+.sponsor-editor legend {
+  font-weight: 600;
+}
+.sponsor-edit-row {
+  border-bottom: 1px solid #cdd2cc;
+  padding-block: 12px;
+  margin-bottom: 12px;
+}
+.sponsor-edit-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+.sponsor-editor label {
+  display: block;
+  font-size: 13px;
+}
+.sponsor-editor input {
+  width: 100%;
+  min-width: 0;
+}
+.sponsor-editor input[type="number"] {
+  display: block;
+  max-width: 120px;
+}
+.sponsor-edit-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.sponsor-editor .sponsor-edit-actions .secondary {
+  width: auto;
+  margin: 0;
+  padding: 8px 10px;
+  font-size: 11px;
+}
 @media (max-width: 700px) {
+  .sponsor-edit-fields {
+    grid-template-columns: 1fr;
+  }
   .sponsor-reel {
     padding: 8px 12px;
     gap: 10px;

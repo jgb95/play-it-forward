@@ -12,7 +12,7 @@ import type {
   AccelerationAttempt,
 } from "../shared/model.ts";
 import { contributionSchema, localeSchema } from "../shared/model.ts";
-import { locales, cityName } from "../shared/locales.ts";
+import { locales, cityName, withLocale } from "../shared/locales.ts";
 import {
   defaultPresentation,
   presentationSchema,
@@ -474,6 +474,16 @@ export function createApp(
       runs: store.runs(),
       locale: store.config.locale ?? "berlin",
       locales,
+      sponsorPresets: Object.fromEntries(
+        locales.map((city) => [
+          city.id,
+          withLocale(store.nextConfig, city.id).sponsors ?? {
+            headline: [],
+            supporting: [],
+            seconds: 8,
+          },
+        ]),
+      ),
       withdrawalsEnabled: !!withdrawals,
       withdrawals: withdrawals?.list() ?? [],
       liveReady: store.mode === "mainnet" && !syncError && lastSync !== null,
@@ -494,7 +504,7 @@ export function createApp(
         req.body.locale === undefined
           ? undefined
           : localeSchema.parse(req.body.locale);
-      store.startRun(String(req.body.name ?? ""), locale);
+      store.startRun(String(req.body.name ?? ""), locale, req.body.sponsors);
       movie.stop();
       stagedMovie = undefined;
       broadcast("reset", { ...state(), config: store.config }, state().eventId);

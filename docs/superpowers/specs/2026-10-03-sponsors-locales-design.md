@@ -1,6 +1,6 @@
 # Sponsors and city editions
 
-The venue screen keeps the adventure, exact pool total and donation QR visible while sponsors rotate alongside it. Two headline positions remain visible; the supporting roster rotates with configurable dwell time. Logos render as ordinary responsive images outside the 640×300 pixel-art canvas, preserving proportions, transparency and source resolution. Missing logos fall back to the sponsor name. Reduced motion shows the complete roster without rotation.
+The venue screen keeps the adventure, exact pool total and donation QR visible while sponsors rotate alongside it. Two or three headline positions remain visible; the supporting roster rotates with configurable dwell time. Any sponsor can be promoted, demoted, reordered or replaced in the next-run editor. Logos render as ordinary responsive images outside the 640×300 pixel-art canvas, preserving proportions, transparency and source resolution. Missing logos fall back to the sponsor name. Reduced motion shows the complete roster without rotation.
 
 Operators choose Berlin or Seoul when starting a new saved run. Selection changes story names, six original scene backgrounds and an original synthesized soundtrack. Existing thresholds, rewards, methods, public URL and wallet network carry over. Every run captures its city and sponsor configuration; historic replays retain them. No presentation control changes payment attribution or performs withdrawals.
 

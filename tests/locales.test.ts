@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { configSchema } from "../shared/model.ts";
+import { configSchema, sponsorsSchema } from "../shared/model.ts";
 import { withLocale } from "../shared/locales.ts";
 import { Store } from "../server/store.ts";
 import { SimulationAdapter } from "../server/payments.ts";
@@ -96,7 +96,10 @@ test("city sponsor overrides and captured replay assets survive a restart", () =
     assert.equal(store.config.sponsors?.headline.length, 0);
     assert.equal(store.runConfig(id).sponsors?.supporting.length, 6);
     store.startRun("Berlin", "berlin");
-    assert.equal(store.config.sponsors?.supporting.length, 0);
+    assert.equal(
+      store.config.sponsors?.supporting.length,
+      config.sponsors?.supporting.length,
+    );
   } finally {
     store.close();
     rmSync(dir, { recursive: true, force: true });
@@ -133,13 +136,53 @@ test("locale selection is authenticated and the public state changes with the ru
         .status,
       400,
     );
+    const before = store.state().eventKey;
     assert.equal(
-      (await post("/admin/runs", { name: "Seoul", locale: "seoul" }, cookie))
-        .status,
+      (
+        await post(
+          "/admin/runs",
+          {
+            name: "Bad roster",
+            locale: "seoul",
+            sponsors: { headline: Array(4).fill({ name: "Extra" }) },
+          },
+          cookie,
+        )
+      ).status,
+      400,
+    );
+    assert.equal(store.state().eventKey, before);
+    const health = await (
+      await fetch(base + "/admin/health", {
+        headers: { Cookie: cookie },
+      })
+    ).json();
+    assert.deepEqual(health.sponsorPresets.berlin, raw.sponsors);
+    assert.deepEqual(health.sponsorPresets.seoul, raw.sponsorLocales.seoul);
+    const custom = sponsorsSchema.parse({
+      headline: [
+        { name: "Main one" },
+        { name: "Main two" },
+        { name: "Main three" },
+      ],
+      supporting: Array.from({ length: 12 }, (_, i) => ({
+        name: `Partner ${i + 1}`,
+      })),
+      seconds: 4,
+    });
+    assert.equal(
+      (
+        await post(
+          "/admin/runs",
+          { name: "Seoul", locale: "seoul", sponsors: custom },
+          cookie,
+        )
+      ).status,
       200,
     );
     const state = await (await fetch(base + "/state")).json();
     assert.equal(state.config.locale, "seoul");
+    assert.deepEqual(state.config.sponsors, custom);
     assert.equal(state.state.total, 0);
   } finally {
     runtime.close();
@@ -172,7 +215,7 @@ test("sponsor configuration rejects remote assets, traversal, unsafe URLs and un
   assert.equal(
     configSchema.safeParse({
       ...raw,
-      sponsors: { headline: Array(3).fill({ name: "Sponsor" }) },
+      sponsors: { headline: Array(4).fill({ name: "Sponsor" }) },
     }).success,
     false,
   );
@@ -180,4 +223,72 @@ test("sponsor configuration rejects remote assets, traversal, unsafe URLs and un
     configSchema.safeParse({ ...raw, sponsors: { seconds: 0 } }).success,
     false,
   );
+});
+
+test("two or three persistent sponsors accept interchangeable rosters of five or twelve", () => {
+  for (const headlineCount of [2, 3]) {
+    for (const supportingCount of [5, 12]) {
+      const roster = sponsorsSchema.parse({
+        headline: Array.from({ length: headlineCount }, (_, i) => ({
+          name: `Title ${i + 1}`,
+        })),
+        supporting: Array.from({ length: supportingCount }, (_, i) => ({
+          name: `Supporter ${i + 1}`,
+          logo: `/sponsors/supporter-${i + 1}.png`,
+        })),
+      });
+      const promoted = roster.supporting.pop()!;
+      const demoted = roster.headline.shift()!;
+      roster.headline.push(promoted);
+      roster.supporting.unshift(demoted);
+      assert.deepEqual(sponsorsSchema.parse(roster), roster);
+      assert.equal(roster.headline.length, headlineCount);
+      assert.equal(roster.supporting.length, supportingCount);
+      assert.equal(roster.headline.at(-1)?.logo, promoted.logo);
+    }
+  }
+  assert.equal(
+    sponsorsSchema.safeParse({ supporting: Array(31).fill({ name: "Extra" }) })
+      .success,
+    false,
+  );
+});
+
+test("a custom next-run roster is validated before saving and survives restart without changing presets", () => {
+  const dir = mkdtempSync(join(tmpdir(), "sponsor-runs-"));
+  const path = join(dir, "runs.sqlite");
+  const config = configSchema.parse(raw);
+  let store = new Store(path, config, "demo");
+  const custom = sponsorsSchema.parse({
+    headline: [{ name: "One" }, { name: "Two" }, { name: "Promoted" }],
+    supporting: Array.from({ length: 12 }, (_, i) => ({
+      name: `Partner ${i}`,
+    })),
+    seconds: 5,
+  });
+  try {
+    const old = store.state().eventKey!;
+    assert.throws(() =>
+      store.startRun("Invalid", "seoul", {
+        ...custom,
+        headline: Array(4).fill({ name: "Extra" }),
+      }),
+    );
+    assert.equal(store.state().eventKey, old);
+    assert.equal(store.runs().length, 1);
+    const id = store.startRun("Custom Seoul", "seoul", custom);
+    assert.deepEqual(store.config.sponsors, custom);
+    assert.equal(store.config.goal, config.goal);
+    assert.deepEqual(store.config.methods, config.methods);
+    assert.deepEqual(store.runConfig(old).sponsors, config.sponsors);
+    store.close();
+    store = new Store(path, config, "demo");
+    assert.deepEqual(store.config.sponsors, custom);
+    store.startRun("Default Seoul", "seoul");
+    assert.deepEqual(store.config.sponsors, config.sponsorLocales!.seoul);
+    assert.deepEqual(store.runConfig(id).sponsors, custom);
+  } finally {
+    store.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

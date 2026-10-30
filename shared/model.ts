@@ -12,9 +12,10 @@ const sponsorSchema = z.object({
     .optional(),
   tier: z.string().trim().min(1).max(40).optional(),
 });
+export const sponsorLimits = { headline: 3, supporting: 30 } as const;
 export const sponsorsSchema = z.object({
-  headline: z.array(sponsorSchema).max(2).default([]),
-  supporting: z.array(sponsorSchema).max(30).default([]),
+  headline: z.array(sponsorSchema).max(sponsorLimits.headline).default([]),
+  supporting: z.array(sponsorSchema).max(sponsorLimits.supporting).default([]),
   seconds: z.number().min(4).max(60).default(8),
 });
 export type Sponsors = z.infer<typeof sponsorsSchema>;

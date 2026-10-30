@@ -1,6 +1,6 @@
 {
   "title": "Play It Forward",
-  "event": "bitcoin++ Berlin \u00b7 payments edition",
+  "event": "bitcoin++ Berlin · payments edition",
   "publicUrl": "http://localhost:5173",
   "methods": ["lightning", "bitcoin", "ark"],
   "chapters": [
@@ -144,7 +144,78 @@
         "logo": "/sponsors/nydig.svg"
       }
     ],
-    "supporting": [],
+    "supporting": [
+      {
+        "name": "Mempool.space",
+        "logo": "/sponsors/mempool.svg",
+        "tier": "Title sponsors"
+      },
+      {
+        "name": "Stakwork",
+        "logo": "/sponsors/stakwork.svg",
+        "tier": "Workshop sponsors"
+      },
+      {
+        "name": "Soapbox",
+        "logo": "/sponsors/soapbox.svg",
+        "tier": "Hackathon sponsors"
+      },
+      {
+        "name": "[[alloc] init]",
+        "logo": "/sponsors/allocinit.svg",
+        "tier": "Silver sponsors"
+      },
+      {
+        "name": "Glimpse Markets",
+        "logo": "/sponsors/glimpse.svg",
+        "tier": "Silver sponsors"
+      },
+      {
+        "name": "Layer2Labs",
+        "logo": "/sponsors/layer2labs.png",
+        "tier": "Silver sponsors"
+      },
+      {
+        "name": "Base58",
+        "logo": "/sponsors/base58.svg",
+        "tier": "Sponsors"
+      },
+      {
+        "name": "Cake Wallet",
+        "logo": "/sponsors/cakewallet.png",
+        "tier": "Sponsors"
+      },
+      {
+        "name": "Electrum",
+        "logo": "/sponsors/electrum.png",
+        "tier": "Sponsors"
+      },
+      {
+        "name": "Flame",
+        "logo": "/sponsors/flame.svg",
+        "tier": "Sponsors"
+      },
+      {
+        "name": "LX",
+        "logo": "/sponsors/lx.jpeg",
+        "tier": "Sponsors"
+      },
+      {
+        "name": "Second",
+        "logo": "/sponsors/second.svg",
+        "tier": "Sponsors"
+      },
+      {
+        "name": "btc++ insider edition",
+        "logo": "/sponsors/insider.png",
+        "tier": "Media sponsors"
+      },
+      {
+        "name": "Nodesignal Podcast",
+        "logo": "/sponsors/nodesignal.jpg",
+        "tier": "Media sponsors"
+      }
+    ],
     "seconds": 8
   }
 }

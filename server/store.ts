@@ -12,9 +12,10 @@ import type {
   AccelerationAttempt,
   StoryEvent,
   HistoryPage,
+  Sponsors,
 } from "../shared/model.ts";
 import { ContributionFeed, type FeedPage } from "../shared/feed.ts";
-import { progression } from "../shared/model.ts";
+import { progression, sponsorsSchema } from "../shared/model.ts";
 import type { Locale } from "../shared/model.ts";
 import { withLocale, cityName } from "../shared/locales.ts";
 export class Store {
@@ -254,13 +255,15 @@ export class Store {
       .prepare("INSERT OR REPLACE INTO metadata VALUES('featuredRun',?)")
       .run(id);
   }
-  startRun(name: string, locale?: Locale) {
+  startRun(name: string, locale?: Locale, sponsors?: Sponsors) {
     if (!name.trim() || name.length > 80)
       throw Error("Enter a run name of 1–80 characters");
     const nextConfig =
       locale === undefined
         ? structuredClone(this.nextConfig)
         : withLocale(this.nextConfig, locale);
+    if (sponsors !== undefined)
+      nextConfig.sponsors = sponsorsSchema.parse(sponsors);
     const id = randomUUID(),
       now = Date.now();
     this.db.exec("BEGIN IMMEDIATE");
