@@ -1,0 +1,16 @@
+Sponsor logos retain their owners' copyright and trademarks. These are event
+branding assets, not artwork licensed under this project's MIT license.
+
+Source: https://btcpp.dev/seoul (retrieved 2026-10-03)
+
+Human Rights Foundation: https://btcpp.nyc3.digitaloceanspaces.com/sponsors/hrf.svg
+NYDIG: https://btcpp.nyc3.digitaloceanspaces.com/sponsors/nydig_dark.svg
+Btrust: https://btcpp.nyc3.digitaloceanspaces.com/sponsors/68877943d622.jpg
+Stakwork: https://btcpp.nyc3.digitaloceanspaces.com/sponsors/stak.svg
+Soapbox: https://btcpp.nyc3.digitaloceanspaces.com/sponsors/soapbox.svg
+Base58: https://btcpp.nyc3.digitaloceanspaces.com/sponsors/base58_logo_blk.svg
+LX: https://btcpp.nyc3.digitaloceanspaces.com/sponsors/be9e6c539851.jpeg
+btc++ insider edition: https://btcpp.nyc3.digitaloceanspaces.com/sponsors/riga-insider.png
+
+Files are bundled unchanged for local venue playback without remote image requests.
+Verify the current event roster with the organizer before presenting.

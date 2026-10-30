@@ -128,6 +128,31 @@ test("SSE resumes bounded receipt history then supplies authoritative state", as
   }
 });
 
+test("new-run SSE sends its captured city configuration with the reset state", async () => {
+  const s = await setup();
+  const controller = new AbortController();
+  try {
+    const login = await s.post("/admin/login", { token });
+    const cookie = login.headers.get("set-cookie")!.split(";")[0];
+    const response = await fetch(s.base + "/api/events", {
+      signal: controller.signal,
+    });
+    const reader = response.body!.getReader();
+    await reader.read();
+    await s.post("/admin/runs", { name: "Seoul SSE", locale: "seoul" }, cookie);
+    const chunk = new TextDecoder().decode((await reader.read()).value);
+    assert.match(chunk, /event: reset/);
+    const payload = JSON.parse(chunk.split("data: ")[1].split("\n")[0]);
+    assert.equal(payload.total, 0);
+    assert.equal(payload.config.locale, "seoul");
+    assert.equal(payload.config.chapters[0].name, "Seoul Station");
+    assert.equal(payload.eventKey, s.store.state().eventKey);
+  } finally {
+    controller.abort();
+    await s.close();
+  }
+});
+
 test("director controls validate settings and live mode refuses movie simulation", async () => {
   const s = await setup("signet");
   try {

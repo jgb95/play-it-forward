@@ -17,6 +17,8 @@ import {
 } from "./encounters";
 import type { Recruit } from "../shared/model";
 import type { State } from "../shared/model";
+import type { Locale } from "../shared/model";
+import { seoulArchitecture } from "./seoul";
 const W = 640,
   H = 300;
 const palette = {
@@ -118,7 +120,12 @@ function stall(
     box(c, x + 8 + i * 4, y + 9, 3, 5, i % 2 ? "#bd6744" : "#cab35b");
   glow(c, x + 26, y + 6, 30, "#ffb84b28");
 }
-export function background(scene: number, vaultOpen: boolean, tier: number) {
+export function background(
+  scene: number,
+  vaultOpen: boolean,
+  tier: number,
+  locale: Locale = "berlin",
+) {
   const cvs = document.createElement("canvas");
   cvs.width = W;
   cvs.height = H;
@@ -157,7 +164,9 @@ export function background(scene: number, vaultOpen: boolean, tier: number) {
       y = 230 + rand() * 70;
     box(c, x, y, 2 + rand() * 5, 1, rand() > 0.4 ? "#78635d" : "#303f48");
   }
-  if ([0, 1, 2, 4].includes(scene)) {
+  if (locale === "seoul") {
+    seoulArchitecture(c, scene, vaultOpen, tier);
+  } else if ([0, 1, 2, 4].includes(scene)) {
     architecture(c, scene);
   } else if (scene === 3) {
     galleryBackdrop(c);

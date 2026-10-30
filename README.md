@@ -47,7 +47,7 @@ The bottom progress bar measures sats toward the hall; the chapter tracker measu
 
 ## Configure an event
 
-Edit `config.json` (or set `CONFIG_PATH`). Branding, chapter names, scene assignments, subtitles, accessory rewards, milestone amounts, goal, contribution methods, and public URL are configurable. The current renderer includes six Berlin scenes; a new visual theme requires supplying new scene artwork/rendering code. There is no theme editor or multi-event platform in this prototype.
+Edit `config.json` (or set `CONFIG_PATH`). Branding, chapter names, scene assignments, subtitles, accessory rewards, milestone amounts, goal, contribution methods, and public URL are configurable. The operator desk selects **Berlin or Seoul** for the next saved run, including six city scenes and an original city soundtrack. Sponsor logos stay sharp outside the pixel-art canvas, with two headline positions and a configurable supporting reel. See [sponsor configuration and design-file import](docs/SPONSORS.md) for PNG/JPEG, TIFF, PSD and PDF-compatible Illustrator artwork.
 
 `PUBLIC_URL` overrides the configured URL. All secrets belong in `.env`, never in the configuration or frontend. The app supports `demo`, `signet`, and `mainnet`; each has a distinct ledger file under `DATA_DIR`.
 
