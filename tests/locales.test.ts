@@ -292,3 +292,66 @@ test("a custom next-run roster is validated before saving and survives restart w
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("a full sponsor roster saves over HTTP while other payloads remain bounded", async () => {
+  const store = new Store(":memory:", configSchema.parse(raw), "demo");
+  const runtime = createApp(
+    store,
+    new SimulationAdapter(),
+    "test-token-longer-than-24-chars",
+    { serveStatic: false },
+  );
+  const server = runtime.app.listen(0, "127.0.0.1");
+  await new Promise<void>((r) => server.once("listening", r));
+  const base = `http://127.0.0.1:${(server.address() as any).port}/api`;
+  const post = (path: string, body: unknown, cookie = "") =>
+    fetch(base + path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify(body),
+    });
+  const sponsor = (i: number) => ({
+    name: `${i} `.padEnd(80, "N"),
+    tier: "Supporter".padEnd(40, "T"),
+    logo: `/sponsors/partner-${i}.png`,
+  });
+  const sponsors = sponsorsSchema.parse({
+    headline: Array.from({ length: 3 }, (_, i) => sponsor(i)),
+    supporting: Array.from({ length: 30 }, (_, i) => sponsor(i + 3)),
+    seconds: 4,
+  });
+  const body = { name: "Full Seoul roster", locale: "seoul", sponsors };
+  assert.ok(Buffer.byteLength(JSON.stringify(body)) > 4096);
+  try {
+    const login = await post("/admin/login", {
+      token: "test-token-longer-than-24-chars",
+    });
+    const cookie = login.headers.get("set-cookie")!.split(";")[0];
+    assert.equal((await post("/admin/runs", body)).status, 401);
+    assert.equal((await post("/admin/runs", body, cookie)).status, 200);
+    const state = await (await fetch(base + "/state")).json();
+    assert.equal(state.config.locale, "seoul");
+    assert.deepEqual(state.config.sponsors, sponsors);
+    const activeRun = store.state().eventKey;
+    assert.equal(
+      (
+        await post(
+          "/admin/runs",
+          { ...body, padding: "x".repeat(32768) },
+          cookie,
+        )
+      ).status,
+      413,
+    );
+    assert.equal(store.state().eventKey, activeRun);
+    assert.equal(
+      (await post("/contributions", { amount: 100, name: "x".repeat(4096) }))
+        .status,
+      413,
+    );
+  } finally {
+    runtime.close();
+    await new Promise<void>((r) => server.close(() => r()));
+    store.close();
+  }
+});

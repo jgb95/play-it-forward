@@ -48,6 +48,8 @@ export function createApp(
   if (options.rehearsal) app.use("/rehearsal", options.rehearsal);
   app.disable("x-powered-by");
   app.set("trust proxy", "loopback");
+  // A complete sponsor roster can exceed the smaller payment request limit.
+  app.post("/api/admin/runs", express.json({ limit: "32kb" }));
   app.use(express.json({ limit: "4kb" }));
   const sessions = new Map<string, number>(),
     limits = new Map<string, { count: number; until: number }>(),
@@ -830,7 +832,7 @@ export function createApp(
     const dir = resolve("dist");
     app.use(express.static(dir, { maxAge: "1h" }));
     app.get("/{*path}", (_req, res) =>
-      res.sendFile(resolve(dir, "index.html")),
+      res.sendFile("index.html", { root: dir }),
     );
   }
   app.use(
@@ -840,6 +842,15 @@ export function createApp(
       res: express.Response,
       _next: express.NextFunction,
     ) => {
+      if (
+        typeof error === "object" &&
+        error !== null &&
+        "type" in error &&
+        error.type === "entity.too.large"
+      ) {
+        res.status(413).json({ error: "Request body is too large" });
+        return;
+      }
       res.status(503).json({
         error:
           error instanceof SyntaxError

@@ -1546,7 +1546,9 @@ function Screen({ presenting = false }: { presenting?: boolean }) {
           </div>
         )}
         <div className="journey-heading">
-          <span className="eyebrow">OUR BERLIN JOURNEY</span>
+          <span className="eyebrow">
+            OUR {cityName(config).toUpperCase()} JOURNEY
+          </span>
           <span>
             {Math.min(100, Math.floor((state.total / config.goal) * 100))}% of{" "}
             {sats(config.goal)} sats <b>↗</b>
@@ -1851,7 +1853,9 @@ function Donate() {
         eventMode={data.state.eventMode}
       />
       <div className="mobile-heading">
-        <p className="eyebrow">BERLIN, LET’S BUILD SOMETHING TOGETHER.</p>
+        <p className="eyebrow">
+          {cityName(data.config).toUpperCase()}, LET’S BUILD SOMETHING TOGETHER.
+        </p>
         <h1>
           Your sats.
           <br />
